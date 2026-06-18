@@ -1,0 +1,59 @@
+# DaVinci Resolve Flow (ShotGrid) Integration Script Documentation
+# Script Name: davinciFlow.py
+
+## Overview
+This script is a custom Python UI tool for DaVinci Resolve Studio 18 that automatically queries ShotGrid (Flow) for a specific sequence, downloads/imports the latest published media (movies or image sequences) based on a strict task hierarchy, and precisely edits them together on a timeline matching the exact cut lengths defined in Flow.
+
+## Dependencies
+- DaVinci Resolve Studio 18 (with Scripting API enabled)
+- Python 3.x
+- `shotgun_api3` (ShotGrid Python API)
+- Standard libraries: `os`, `sys`, `json`, `datetime`, `urllib.request`
+
+## UI Components (Resolve UIManager)
+- **Project Combo**: Populated dynamically from Flow projects.
+- **Sequence Combo**: Populated dynamically when a project is selected.
+- **Lowest/Highest Task**: Defines the acceptable pipeline task hierarchy (e.g. delivery > confo_render > compo_comp > anim_main). The script searches top-down and takes the first available version.
+- **Use Image Sequences (Checkbox)**: If checked, pulls `sg_path_to_frames` instead of `sg_path_to_movie`.
+- **Use Flow Audio (Checkbox)**: If checked, it ignores embedded video audio and instead queries ShotGrid for PublishedFiles of type "WAV Audio".
+- **Update Latest Timeline (Checkbox)**: If checked, re-uses and wipes the most recently created timeline for that sequence instead of spawning a new duplicate timeline.
+
+## Core Logic & Data Flow
+
+### 1. Data Querying (`fetch_flow_data`)
+- Queries Flow for all Shots inside the selected Sequence, sorting them alphabetically.
+- Extracts `sg_cut_in` and `sg_cut_out` frame numbers to determine the exact shot duration.
+- Iterates through the selected Task Hierarchy array. For each task, it queries for a `Version` entity linked to the Shot.
+- If it finds a Version, it pulls the file path.
+- If "Use Flow Audio" is checked, it additionally queries the `PublishedFile` entity for the matching WAV file.
+
+### 2. Path Resolution & Cross-OS Translation (`resolve_path` & `_path_exists_smart`)
+- Flow paths are often stored as Linux absolute paths (`/s/prodanim/...`).
+- The script automatically translates these into Windows paths.
+- It dynamically checks if the mounted drive is `V:` (Montreal) or `W:` (Paris) by testing path existence using `os.path.exists()`.
+- **Image Sequence Support**: For strings containing `%04d` or `%` formatting, `os.path.exists` on the file naturally fails. The script intercepts these and checks the existence of the parent directory (`os.path.dirname`) instead to correctly validate the drive.
+
+### 3. Missing Media Handling (`get_missing_media_path`)
+- If a Shot exists in Flow but has no published media for the requested tasks, the script inserts a placeholder to maintain timeline sync.
+- It masquerades as `Mozilla/5.0` to bypass 403 Forbidden blocks and downloads a bright red "NO CLIP" `.jpg` from `dummyimage.com`.
+- This placeholder is saved locally to `T:\flowDavinci\no_clip.jpg`.
+- **Placeholder Timing**: Because it's a still image, its duration is mathematically calculated as `cut_out - cut_in`. If cut data is entirely missing from Flow, it defaults to a safe 2-second hold (48 frames).
+
+### 4. DaVinci Media Pool Import (`find_clip_in_folder`)
+- The script organizes imported files cleanly into a root `media/` folder, branching into `movies/` (or `frames/`) and `audio/` sub-bins.
+- Before importing, it checks if the exact file path already exists in the bin to prevent duplicate media bloat.
+- **Image Sequence Import**: It strips the `%04d` token and passes the parent directory to `media_pool.ImportMedia()`, allowing DaVinci to auto-detect and collapse the sequence. The existing clip searcher matches the directory footprint to prevent duplicate sequence imports.
+
+### 5. Cut Durations & Subclipping
+- Published media (movies/sequences) are generally already trimmed to match the cut. 
+- Passing absolute timecodes (e.g. 101 to 400) to DaVinci's `startFrame` parameter causes DaVinci to incorrectly chop off the first 101 frames of the file.
+- **The Fix**: The script calculates `duration = cut_out - cut_in` and explicitly instructs DaVinci to subclip the item starting from zero-offset: `startFrame = 0`, `endFrame = duration`. This guarantees mathematically perfect clip lengths.
+
+### 6. Timeline Assembly & Track Management
+- **Timeline Wiping**: If "Update latest timeline" is checked, the script searches the `timeline` bin for all timelines starting with the Sequence name, sorts them to find the most recent, and aggressively iterates over every Video, Audio, and Subtitle track using `DeleteClips()` to provide a blank slate.
+- **Video Append**: Appends all mapped video dictionaries using `AppendToTimeline()`. If custom audio is requested, it adds `"mediaType": 1` to strip the `.mov` embedded audio, leaving Video Track 1 pristine.
+- **Audio Syncing & Appending**: 
+  - If Flow Audio is enabled, it ensures Audio Track 1 is created.
+  - Rather than blindly appending audio to the end of the timeline, the script loops over the newly laid Video clips on Video Track 1 and reads their absolute DaVinci timecodes (`GetStart()`).
+  - It assigns these exact timecodes to the `"recordFrame"` parameter of the corresponding `.wav` files.
+  - If a `.wav` file is missing for a shot, it gracefully skips it. An internal `video_index` mapping guarantees that the remaining audio files still snap exactly underneath their respective video clips without falling out of sync.

@@ -1,0 +1,20 @@
+{
+  "flow_url": "https://mikrosanim.priv.shotgunstudio.com/",
+  "script_name": "resolveTest",
+  "script_key": "vblervsd(ubdZzxsxtvo5jimv",
+  "projects": [
+    "Tmnt2"
+  ],
+  "tasks": [
+    "delivery",
+    "confo_render",
+    "compo_comp",
+    "compo_precomp",
+    "light_precomp",
+    "anim_main",
+    "layout_base",
+    "previz_base",
+    "editing_edt"
+  ],
+  "proxy_download_path": "T:\\flowDavinci"
+}
