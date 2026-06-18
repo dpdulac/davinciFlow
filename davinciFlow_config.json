@@ -7,11 +7,11 @@
   ],
   "tasks": [
     "delivery",
-    "confo_render",
     "compo_comp",
     "compo_precomp",
     "light_precomp",
     "anim_main",
+    "confo_render",
     "layout_base",
     "previz_base",
     "editing_edt"
