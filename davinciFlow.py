@@ -187,6 +187,10 @@ layout = ui.VGroup([
         ui.CheckBox({'ID': 'UseAudio', 'Text': 'Import .wav files from Flow', 'Checked': False})
     ]),
     ui.HGroup([
+        ui.Label({'Text': 'Load All Versions as Takes:'}),
+        ui.CheckBox({'ID': 'LoadTakesCheck', 'Checked': False})
+    ]),
+    ui.HGroup([
         ui.Label({'Text': 'Timeline Options:'}),
         ui.CheckBox({'ID': 'UseLatestTimeline', 'Text': 'Update latest timeline (clears existing clips)', 'Checked': True})
     ]),
@@ -224,7 +228,7 @@ if MASTER_TASKS:
 # ==========================================
 # FETCH DATA
 # ==========================================
-def fetch_flow_data(project_name, sequence_name, highest_idx, lowest_idx, use_image_seq, use_audio):
+def fetch_flow_data(project_name, sequence_name, highest_idx, lowest_idx, use_image_seq, use_audio, load_all_versions):
     print(f"Connecting to Flow as '{SCRIPT_NAME}'...")
     try:
         sg = shotgun_api3.Shotgun(FLOW_URL, script_name=SCRIPT_NAME, api_key=SCRIPT_KEY)
@@ -301,6 +305,8 @@ def fetch_flow_data(project_name, sequence_name, highest_idx, lowest_idx, use_im
             if found_media:
                 break
                 
+            found_versions = []
+            
             for v in versions:
                 v_shot_id = v.get('entity', {}).get('id')
                 v_task_name = v.get('sg_task', {}).get('name')
@@ -331,18 +337,28 @@ def fetch_flow_data(project_name, sequence_name, highest_idx, lowest_idx, use_im
                                         is_web_proxy = True
                                     
                     if path_to_use:
-                        media_dict[shot_id] = {
-                            'shot_code': shot_code,
-                            'task': task,
+                        found_versions.append({
                             'path': path_to_use,
-                            'audio_path': audio_path,
-                            'is_web_proxy': is_web_proxy,
-                            'cut_in': shot_data.get('sg_cut_in'),
-                            'cut_out': shot_data.get('sg_cut_out'),
-                            'head_in': shot_data.get('sg_head_in')
-                        }
-                        found_media = True
-                        break 
+                            'is_web_proxy': is_web_proxy
+                        })
+                        
+            if found_versions:
+                base_ver = found_versions[0]
+                takes_list = found_versions[1:] if load_all_versions else []
+                
+                media_dict[shot_id] = {
+                    'shot_code': shot_code,
+                    'task': task,
+                    'path': base_ver['path'],
+                    'audio_path': audio_path,
+                    'is_web_proxy': base_ver['is_web_proxy'],
+                    'takes': takes_list,
+                    'cut_in': shot_data.get('sg_cut_in'),
+                    'cut_out': shot_data.get('sg_cut_out'),
+                    'head_in': shot_data.get('sg_head_in')
+                }
+                found_media = True
+                break 
                         
         if not found_media:
             media_dict[shot_id] = {
@@ -370,6 +386,7 @@ def OnBuild(ev):
     use_img = items["ImageSeqCheck"].Checked
     use_audio = items["UseAudio"].Checked
     use_latest_timeline = items["UseLatestTimeline"].Checked
+    load_takes = items["LoadTakesCheck"].Checked
     
     if highest_idx > lowest_idx:
         print("Error: Highest task must be above Lowest task in the hierarchy.")
@@ -379,7 +396,7 @@ def OnBuild(ev):
     
     print(f"\n--- Starting Build for {project_name} Sequence {seq_padded} ---")
     # 1. Fetch
-    media_data = fetch_flow_data(project_name, seq_padded, highest_idx, lowest_idx, use_img, use_audio)
+    media_data = fetch_flow_data(project_name, seq_padded, highest_idx, lowest_idx, use_img, use_audio, load_takes)
     if not media_data:
         print("No media data gathered.")
         return
@@ -394,6 +411,7 @@ def OnBuild(ev):
     
     video_clip_infos = []
     audio_clip_infos = []
+    pending_takes_to_attach = []
     
     sorted_shots = sorted(media_data.values(), key=lambda x: x['shot_code'])
     
@@ -402,6 +420,23 @@ def OnBuild(ev):
         path = data['path']
         is_missing = (path == 'MISSING')
         is_web_proxy = data.get('is_web_proxy', False)
+        
+        # Resolve take paths
+        takes_data_list = []
+        for idx, take_data in enumerate(data.get('takes', [])):
+            take_path = take_data['path']
+            is_wp = take_data['is_web_proxy']
+            if is_wp:
+                safe_name = f"{data['shot_code']}_{data['task']}_v{idx+2}_proxy.mp4"
+                local_proxy_path = os.path.join(PROXY_DOWNLOAD_PATH, safe_name)
+                print(f"Downloading Web Proxy for Take: {safe_name}...")
+                if not os.path.exists(local_proxy_path):
+                    try:
+                        urllib.request.urlretrieve(take_path, local_proxy_path)
+                    except Exception as e:
+                        pass
+                take_path = local_proxy_path
+            takes_data_list.append(take_path)
         
         if is_missing:
             path = get_missing_media_path()
@@ -457,6 +492,24 @@ def OnBuild(ev):
                     print(f"  -> Applying Duration constraint: {duration} frames (0 to {duration})")
                 
             video_clip_infos.append(clip_info)
+            
+            # Now process takes
+            if takes_data_list:
+                imported_takes = []
+                for tp in takes_data_list:
+                    ec = find_clip_in_folder(movies_bin, tp)
+                    if not ec:
+                        media_pool.SetCurrentFolder(movies_bin)
+                        imp = media_pool.ImportMedia([tp])
+                        if imp: ec = imp[0]
+                    if ec: imported_takes.append(ec)
+                
+                if imported_takes:
+                    pending_takes_to_attach.append({
+                        "video_index": len(video_clip_infos) - 1,
+                        "duration": clip_info.get("endFrame", 48),
+                        "media_items": imported_takes
+                    })
         else:
             print("  -> ERROR: Failed to import Video.")
             
@@ -529,7 +582,17 @@ def OnBuild(ev):
         dvr_project.SetCurrentTimeline(target_timeline)
     
     print(f"Appending {len(video_clip_infos)} video clips to timeline...")
-    media_pool.AppendToTimeline(video_clip_infos)
+    appended_items = media_pool.AppendToTimeline(video_clip_infos)
+    
+    if appended_items and pending_takes_to_attach:
+        print("Attaching previous versions as Takes...")
+        for take_info in pending_takes_to_attach:
+            v_idx = take_info["video_index"]
+            if v_idx < len(appended_items):
+                tl_item = appended_items[v_idx]
+                dur = take_info["duration"]
+                for take_media in take_info["media_items"]:
+                    tl_item.AddTake(take_media, 0, dur)
     
     if use_audio and audio_clip_infos:
         print(f"Appending {len(audio_clip_infos)} audio clips to timeline Track 1...")
