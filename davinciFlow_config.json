@@ -10,8 +10,8 @@
     "compo_comp",
     "compo_precomp",
     "light_precomp",
-    "anim_main",
     "confo_render",
+    "anim_main",
     "layout_base",
     "previz_base",
     "editing_edt"
