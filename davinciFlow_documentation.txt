@@ -86,3 +86,12 @@ When the user clicks "Build Sequence", query SG:
 
 ## 6. EXECUTION
 Show the window and start the Fusion `dispatcher.RunLoop()`. Hide window on completion or cancel.
+
+## 7. COMPANION APP (`userpref_manager.py`)
+Also write a secondary standalone script using `PySide6`. This is a dedicated Desktop app so artists don't have to manually edit `userpref.json`.
+- It loads `davinciFlow_config.json` to extract the `tasks` array.
+- It provides a `QLineEdit` for a preset name.
+- It provides a `QComboBox` populated with the tasks, and an "Add Task" `QPushButton`.
+- It uses a `QListWidget` to show currently added tasks in order, preventing duplicates via an error popup.
+- It has a "Save Preset" `QPushButton` that writes to `userpref.json`.
+- It has a `QTableWidget` to view all saved presets in `userpref.json`.
