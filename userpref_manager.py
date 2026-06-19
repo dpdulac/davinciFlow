@@ -6,8 +6,18 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                QTableWidget, QTableWidgetItem, QHeaderView, QMessageBox)
 from PySide6.QtCore import Qt
 
-CONFIG_PATH = os.path.join(os.path.dirname(__file__), "davinciFlow_config.json")
-USERPREF_PATH = os.path.join(os.path.dirname(__file__), "userpref.json")
+try:
+    _dir = os.path.dirname(os.path.abspath(__file__))
+except NameError:
+    _dir = os.path.dirname(os.path.abspath(sys.argv[0]))
+
+davinci_dir = r"C:\ProgramData\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility\davinciFlow"
+if os.path.exists(davinci_dir):
+    CONFIG_PATH = os.path.join(davinci_dir, "davinciFlow_config.json")
+    USERPREF_PATH = os.path.join(davinci_dir, "userpref.json")
+else:
+    CONFIG_PATH = os.path.join(_dir, "davinciFlow_config.json")
+    USERPREF_PATH = os.path.join(_dir, "userpref.json")
 
 class UserPrefManager(QMainWindow):
     def __init__(self):
