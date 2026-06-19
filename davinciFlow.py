@@ -9,7 +9,12 @@ import time
 import concurrent.futures
 
 # Setup Logging
-LOG_PATH = os.path.join(os.path.dirname(__file__), "davinciFlow.log")
+try:
+    _dir = os.path.dirname(os.path.abspath(__file__))
+except NameError:
+    _dir = os.path.dirname(os.path.abspath(sys.argv[0]))
+LOG_PATH = os.path.join(_dir, "davinciFlow.log")
+
 logging.basicConfig(filename=LOG_PATH, level=logging.INFO, 
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -20,7 +25,13 @@ def log(msg):
 # ==========================================
 # FLOW AUTHENTICATION & CONFIG
 # ==========================================
-CONFIG_PATH = os.path.join(os.path.dirname(__file__), "davinciFlow_config.json")
+try:
+    SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+except NameError:
+    # DaVinci Resolve's embedded interpreter doesn't set __file__
+    SCRIPT_DIR = os.path.dirname(os.path.abspath(sys.argv[0]))
+    
+CONFIG_PATH = os.path.join(SCRIPT_DIR, "davinciFlow_config.json")
 
 # Default fallback values if config fails
 FLOW_URL = "https://mikrosanim.priv.shotgunstudio.com/"
@@ -47,7 +58,7 @@ if os.path.exists(CONFIG_PATH):
     except Exception as e:
         print(f"Failed to load json config: {e}")
 
-USERPREF_PATH = os.path.join(os.path.dirname(__file__), "userpref.json")
+USERPREF_PATH = os.path.join(SCRIPT_DIR, "userpref.json")
 user_presets = {}
 if os.path.exists(USERPREF_PATH):
     try:
