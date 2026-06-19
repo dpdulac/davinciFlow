@@ -20,7 +20,7 @@ def log(msg):
 # ==========================================
 # FLOW AUTHENTICATION & CONFIG
 # ==========================================
-CONFIG_PATH = r"W:\jmji\_sandbox\dulacd\Script\Blender\davinciFlow_config.json"
+CONFIG_PATH = os.path.join(os.path.dirname(__file__), "davinciFlow_config.json")
 
 # Default fallback values if config fails
 FLOW_URL = "https://mikrosanim.priv.shotgunstudio.com/"
@@ -47,7 +47,7 @@ if os.path.exists(CONFIG_PATH):
     except Exception as e:
         print(f"Failed to load json config: {e}")
 
-USERPREF_PATH = r"W:\jmji\_sandbox\dulacd\Script\Blender\userpref.json"
+USERPREF_PATH = os.path.join(os.path.dirname(__file__), "userpref.json")
 user_presets = {}
 if os.path.exists(USERPREF_PATH):
     try:
