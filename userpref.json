@@ -1,0 +1,32 @@
+{
+  "presets": {
+    "Compositor Default": [
+      "compo_comp",
+      "light_precomp",
+      "anim_main",
+      "editing_edt"
+    ],
+    "Animator Default": [
+      "anim_main",
+      "layout_base",
+      "previz_base",
+      "editing_edt"
+    ],
+    "Layout Default": [
+      "layout_base",
+      "previz_base",
+      "editing_edt"
+    ],
+    "Full Pipeline": [
+      "delivery",
+      "confo_render",
+      "compo_comp",
+      "compo_precomp",
+      "light_precomp",
+      "anim_main",
+      "layout_base",
+      "previz_base",
+      "editing_edt"
+    ]
+  }
+}

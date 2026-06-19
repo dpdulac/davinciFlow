@@ -35,6 +35,16 @@ if os.path.exists(CONFIG_PATH):
     except Exception as e:
         print(f"Failed to load json config: {e}")
 
+USERPREF_PATH = r"W:\jmji\_sandbox\dulacd\Script\Blender\userpref.json"
+user_presets = {}
+if os.path.exists(USERPREF_PATH):
+    try:
+        with open(USERPREF_PATH, 'r') as f:
+            upref = json.load(f)
+            user_presets = upref.get('presets', {})
+    except Exception as e:
+        print(f"Failed to load userpref.json: {e}")
+
 # ==========================================
 # MODULE IMPORTS
 # ==========================================
@@ -179,6 +189,14 @@ layout = ui.VGroup([
         ui.ComboBox({"ID": "LowestTaskCombo", "Weight": 2})
     ]),
     ui.HGroup([
+        ui.Label({"Text": "Use Task Presets:"}),
+        ui.CheckBox({"ID": "UsePresetCheck", "Checked": False})
+    ]),
+    ui.HGroup([
+        ui.Label({"Text": "Task Preset:"}),
+        ui.ComboBox({"ID": "TaskPresetCombo", "Weight": 2})
+    ]),
+    ui.HGroup([
         ui.Label({"Text": "Use Image Sequences:"}),
         ui.CheckBox({"ID": "ImageSeqCheck", "Checked": False})
     ]),
@@ -220,6 +238,10 @@ for t in MASTER_TASKS:
     items["HighestTaskCombo"].AddItem(t)
     items["LowestTaskCombo"].AddItem(t)
 
+if user_presets:
+    for preset_name in user_presets.keys():
+        items["TaskPresetCombo"].AddItem(preset_name)
+
 items["TakeCountCombo"].AddItem("None (Latest Only)")
 items["TakeCountCombo"].AddItem("Last 2 Versions")
 items["TakeCountCombo"].AddItem("Last 3 Versions")
@@ -235,7 +257,7 @@ if MASTER_TASKS:
 # ==========================================
 # FETCH DATA
 # ==========================================
-def fetch_flow_data(project_name, sequence_name, highest_idx, lowest_idx, use_image_seq, use_audio, max_versions):
+def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use_audio, max_versions):
     print(f"Connecting to Flow as '{SCRIPT_NAME}'...")
     try:
         sg = shotgun_api3.Shotgun(FLOW_URL, script_name=SCRIPT_NAME, api_key=SCRIPT_KEY)
@@ -281,7 +303,7 @@ def fetch_flow_data(project_name, sequence_name, highest_idx, lowest_idx, use_im
                 # Fix Path mapping for the local machine (Paris W: / Montreal V:)
                 audio_dict[ent_name] = resolve_path(path)
     
-    valid_tasks = MASTER_TASKS[highest_idx:lowest_idx+1]
+    # valid_tasks is already passed as argument
     
     # Query all versions for these shots in the valid tasks
     v_filters = [
@@ -419,16 +441,22 @@ def OnBuild(ev):
             max_versions = int(take_combo_text.split(" ")[1])
         except:
             max_versions = 0
-    
-    if highest_idx > lowest_idx:
-        print("Error: Highest task must be above Lowest task in the hierarchy.")
-        return
+            
+    use_preset = items["UsePresetCheck"].Checked
+    if use_preset:
+        preset_name = items["TaskPresetCombo"].CurrentText
+        valid_tasks = user_presets.get(preset_name, MASTER_TASKS)
+    else:
+        if highest_idx > lowest_idx:
+            print("Error: Highest task must be above Lowest task in the hierarchy.")
+            return
+        valid_tasks = MASTER_TASKS[highest_idx:lowest_idx+1]
         
     dispatcher.ExitLoop()
     
     print(f"\n--- Starting Build for {project_name} Sequence {seq_padded} ---")
     # 1. Fetch
-    media_data = fetch_flow_data(project_name, seq_padded, highest_idx, lowest_idx, use_img, use_audio, max_versions)
+    media_data = fetch_flow_data(project_name, seq_padded, valid_tasks, use_img, use_audio, max_versions)
     if not media_data:
         print("No media data gathered.")
         return
