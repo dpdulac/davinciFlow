@@ -421,6 +421,17 @@ def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use
 # ==========================================
 # EVENT HANDLERS
 # ==========================================
+# Set initial state
+items["TaskPresetCombo"].Enabled = False
+items["HighestTaskCombo"].Enabled = True
+items["LowestTaskCombo"].Enabled = True
+
+def OnPresetCheck(ev):
+    checked = items["UsePresetCheck"].Checked
+    items["TaskPresetCombo"].Enabled = checked
+    items["HighestTaskCombo"].Enabled = not checked
+    items["LowestTaskCombo"].Enabled = not checked
+
 def OnBuild(ev):
     project_name = items["ProjectCombo"].CurrentText
     seq_str = items["SeqCombo"].CurrentText.strip()
@@ -682,6 +693,7 @@ def OnCancel(ev):
 win.On.BuildBtn.Clicked = OnBuild
 win.On.CancelBtn.Clicked = OnCancel
 win.On.FlowDialog.Close = OnCancel
+win.On.UsePresetCheck.Clicked = OnPresetCheck
 
 # ==========================================
 # EXECUTE UI
