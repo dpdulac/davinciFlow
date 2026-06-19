@@ -18,12 +18,7 @@ except NameError:
         _dir = r"W:\jmji\_sandbox\dulacd\Script\Blender"
 LOG_PATH = os.path.join(_dir, "davinciFlow.log")
 
-logging.basicConfig(filename=LOG_PATH, level=logging.INFO, 
-                    format='%(asctime)s - %(levelname)s - %(message)s')
 
-def log(msg):
-    print(msg)
-    logging.info(msg)
 
 # ==========================================
 # FLOW AUTHENTICATION & CONFIG
@@ -63,6 +58,20 @@ if os.path.exists(CONFIG_PATH):
             MASTER_TASKS = config.get('tasks', MASTER_TASKS)
     except Exception as e:
         print(f"Failed to load json config: {e}")
+
+VERBOSE_LEVEL = config.get('verbose_level', 3) if 'config' in locals() else 3
+level_map = {0: logging.CRITICAL, 1: logging.ERROR, 2: logging.WARNING, 3: logging.INFO, 4: logging.DEBUG, 5: logging.DEBUG}
+logging.basicConfig(filename=LOG_PATH, level=level_map.get(VERBOSE_LEVEL, logging.INFO), 
+                    format='%(asctime)s - %(levelname)s - %(message)s')
+
+def log(msg, level=3):
+    if VERBOSE_LEVEL >= level:
+        print(msg)
+    if level == 0: logging.critical(msg)
+    elif level == 1: logging.error(msg)
+    elif level == 2: logging.warning(msg)
+    elif level == 3: logging.info(msg)
+    elif level >= 4: logging.debug(msg)
 
 USERPREF_PATH = os.path.join(SCRIPT_DIR, "userpref.json")
 user_presets = {}
@@ -108,13 +117,13 @@ def retry_sg(func, retries=3, delay=2):
             return func()
         except Exception as e:
             if i == retries - 1:
-                log(f"API Error after {retries} retries: {e}")
+                log(f"API Error after {retries} retries: {e}", level=1)
                 raise e
-            log(f"API Timeout, retrying in {delay} seconds...")
+            log(f"API Timeout, retrying in {delay} seconds...", level=2)
             time.sleep(delay)
 
 def get_sequences(project_name):
-    log(f"Fetching sequences for project '{project_name}'...")
+    log(f"Fetching sequences for project '{project_name}'...", level=2)
     try:
         sg = shotgun_api3.Shotgun(FLOW_URL, script_name=SCRIPT_NAME, api_key=SCRIPT_KEY)
         proj = retry_sg(lambda: sg.find_one("Project", [["name", "is", project_name]], ["id"]))
@@ -133,7 +142,7 @@ def get_sequences(project_name):
         seq_codes.sort()
         return seq_codes
     except Exception as e:
-        log(f"Failed to fetch sequences: {e}")
+        log(f"Failed to fetch sequences: {e}", level=1)
         return []
 
 def get_missing_media_path():
@@ -523,11 +532,11 @@ def OnBuild(ev):
         
     dispatcher.ExitLoop()
     
-    log(f"\n--- Starting Build for {project_name} Sequence {seq_padded} ---")
+    log(f"\n--- Starting Build for {project_name} Sequence {seq_padded} ---", level=2)
     # 1. Fetch
     media_data = fetch_flow_data(project_name, seq_padded, valid_tasks, use_img, use_audio, max_versions)
     if not media_data:
-        log("No media data gathered.")
+        log("No media data gathered.", level=2)
         return
         
     seq_bin = get_or_create_bin(seq_padded)
@@ -544,7 +553,7 @@ def OnBuild(ev):
     
     sorted_shots = sorted(media_data.values(), key=lambda x: x['shot_code'])
     
-    log("\n=== Resolving Media Paths ===")
+    log("\n=== Resolving Media Paths ===", level=4)
     if not os.path.exists(PROXY_DOWNLOAD_PATH):
         os.makedirs(PROXY_DOWNLOAD_PATH, exist_ok=True)
         
@@ -567,7 +576,7 @@ def OnBuild(ev):
                 
     # Phase 2: Download them all in parallel!
     if download_tasks:
-        log(f"Starting {len(download_tasks)} parallel proxy downloads... Please wait.")
+        log(f"Starting {len(download_tasks)} parallel proxy downloads... Please wait.", level=2)
         def _dl(url, lpath, sname):
             try:
                 req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
@@ -581,7 +590,7 @@ def OnBuild(ev):
             futures = [executor.submit(_dl, t[0], t[1], t[2]) for t in download_tasks]
             for f in concurrent.futures.as_completed(futures):
                 logging.info(f.result())
-        log("All parallel downloads finished!")
+        log("All parallel downloads finished!", level=2)
         
     # Phase 3: Resolve paths normally
     for data in sorted_shots:
