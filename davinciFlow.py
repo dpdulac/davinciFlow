@@ -12,7 +12,10 @@ import concurrent.futures
 try:
     _dir = os.path.dirname(os.path.abspath(__file__))
 except NameError:
-    _dir = os.path.dirname(os.path.abspath(sys.argv[0]))
+    if os.path.exists(r"C:\ProgramData\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility\davinciFlow"):
+        _dir = r"C:\ProgramData\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility\davinciFlow"
+    else:
+        _dir = r"W:\jmji\_sandbox\dulacd\Script\Blender"
 LOG_PATH = os.path.join(_dir, "davinciFlow.log")
 
 logging.basicConfig(filename=LOG_PATH, level=logging.INFO, 
@@ -29,7 +32,10 @@ try:
     SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 except NameError:
     # DaVinci Resolve's embedded interpreter doesn't set __file__
-    SCRIPT_DIR = os.path.dirname(os.path.abspath(sys.argv[0]))
+    if os.path.exists(r"C:\ProgramData\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility\davinciFlow"):
+        SCRIPT_DIR = r"C:\ProgramData\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility\davinciFlow"
+    else:
+        SCRIPT_DIR = r"W:\jmji\_sandbox\dulacd\Script\Blender"
     
 CONFIG_PATH = os.path.join(SCRIPT_DIR, "davinciFlow_config.json")
 
