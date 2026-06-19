@@ -1,59 +1,88 @@
-# DaVinci Resolve Flow (ShotGrid) Integration Script Documentation
-# Script Name: davinciFlow.py
+# DaVinci Flow Pipeline Script - AI Recreation Prompt
 
-## Overview
-This script is a custom Python UI tool for DaVinci Resolve Studio 18 that automatically queries ShotGrid (Flow) for a specific sequence, downloads/imports the latest published media (movies or image sequences) based on a strict task hierarchy, and precisely edits them together on a timeline matching the exact cut lengths defined in Flow.
+**Purpose:** This document is designed to act as a highly detailed prompt. If you feed this text to an LLM, it should be able to perfectly recreate the `davinciFlow.py` script from scratch.
 
-## Dependencies
-- DaVinci Resolve Studio 18 (with Scripting API enabled)
-- Python 3.x
-- `shotgun_api3` (ShotGrid Python API)
-- Standard libraries: `os`, `sys`, `json`, `datetime`, `urllib.request`
+---
 
-## UI Components (Resolve UIManager)
-- **Project Combo**: Populated dynamically from Flow projects.
-- **Sequence Combo**: Populated dynamically when a project is selected.
-- **Lowest/Highest Task**: Defines the acceptable pipeline task hierarchy (e.g. delivery > confo_render > compo_comp > anim_main). The script searches top-down and takes the first available version.
-- **Use Image Sequences (Checkbox)**: If checked, pulls `sg_path_to_frames` instead of `sg_path_to_movie`.
-- **Use Flow Audio (Checkbox)**: If checked, it ignores embedded video audio and instead queries ShotGrid for PublishedFiles of type "WAV Audio".
-- **Update Latest Timeline (Checkbox)**: If checked, re-uses and wipes the most recently created timeline for that sequence instead of spawning a new duplicate timeline.
+## CONTEXT & GOAL
+Write a Python 3 script named `davinciFlow.py` that bridges ShotGrid (Flow) and DaVinci Resolve. The script must query ShotGrid for the latest (or historical) media files for a specific sequence of shots, download missing proxies, and assemble them chronologically into a DaVinci Resolve timeline using the `DaVinciResolveScript` and `fusion.UIManager` APIs.
 
-## Core Logic & Data Flow
+## 1. CONFIGURATION & AUTHENTICATION
+The script must authenticate with ShotGrid via `shotgun_api3`.
+It should fall back to default hardcoded credentials, but primarily attempt to load them from `davinciFlow_config.json`:
+- `flow_url` (default: "https://mikrosanim.priv.shotgunstudio.com/")
+- `script_name` (default: "resolveTest")
+- `script_key` (default: "vblervsd(ubdZzxsxtvo5jimv")
+- `proxy_download_path` (default: "T:\flowDavinci")
+- `projects` (default: ["Tmnt2"])
+- `tasks` (default: `["delivery", "confo_render", "compo_comp", "compo_precomp", "light_precomp", "anim_main", "layout_base", "previz_base", "editing_edt"]`)
 
-### 1. Data Querying (`fetch_flow_data`)
-- Queries Flow for all Shots inside the selected Sequence, sorting them alphabetically.
-- Extracts `sg_cut_in` and `sg_cut_out` frame numbers to determine the exact shot duration.
-- Iterates through the selected Task Hierarchy array. For each task, it queries for a `Version` entity linked to the Shot.
-- If it finds a Version, it pulls the file path.
-- If "Use Flow Audio" is checked, it additionally queries the `PublishedFile` entity for the matching WAV file.
+It must also load a `userpref.json` (if it exists) which contains custom task arrays:
+```json
+{"presets": {"Compositor Default": ["compo_comp", "light_precomp", "anim_main", "editing_edt"]}}
+```
 
-### 2. Path Resolution & Cross-OS Translation (`resolve_path` & `_path_exists_smart`)
-- Flow paths are often stored as Linux absolute paths (`/s/prodanim/...`).
-- The script automatically translates these into Windows paths.
-- It dynamically checks if the mounted drive is `V:` (Montreal) or `W:` (Paris) by testing path existence using `os.path.exists()`.
-- **Image Sequence Support**: For strings containing `%04d` or `%` formatting, `os.path.exists` on the file naturally fails. The script intercepts these and checks the existence of the parent directory (`os.path.dirname`) instead to correctly validate the drive.
+## 2. UI DESIGN (Fusion UIManager)
+Build a GUI window (Geometry: `[400, 400, 550, 450]`) using `fusion.UIManager`.
+Organize it into three distinct visual sections using centered Labels (e.g. `--- FLOW ---`).
 
-### 3. Missing Media Handling (`get_missing_media_path`)
-- If a Shot exists in Flow but has no published media for the requested tasks, the script inserts a placeholder to maintain timeline sync.
-- It masquerades as `Mozilla/5.0` to bypass 403 Forbidden blocks and downloads a bright red "NO CLIP" `.jpg` from `dummyimage.com`.
-- This placeholder is saved locally to `T:\flowDavinci\no_clip.jpg`.
-- **Placeholder Timing**: Because it's a still image, its duration is mathematically calculated as `cut_out - cut_in`. If cut data is entirely missing from Flow, it defaults to a safe 2-second hold (48 frames).
+**Section: FLOW**
+- `ProjectCombo`: Dropdown of projects from config.
+- `SeqCombo`: Dropdown of sequence numbers (e.g. "0575") fetched live from SG upon launch.
+- `ImageSeqCheck`: Checkbox (Use Image Sequences instead of movies).
+- `UseAudio`: Checkbox (Import .wav files from Flow).
 
-### 4. DaVinci Media Pool Import (`find_clip_in_folder`)
-- The script organizes imported files cleanly into a root `media/` folder, branching into `movies/` (or `frames/`) and `audio/` sub-bins.
-- Before importing, it checks if the exact file path already exists in the bin to prevent duplicate media bloat.
-- **Image Sequence Import**: It strips the `%04d` token and passes the parent directory to `media_pool.ImportMedia()`, allowing DaVinci to auto-detect and collapse the sequence. The existing clip searcher matches the directory footprint to prevent duplicate sequence imports.
+**Section: TASKS**
+- `UsePresetCheck`: Checkbox to override High/Low drop-downs.
+- `HighestTaskCombo` & `LowestTaskCombo`: Dropdowns side-by-side in an HGroup, populated from the master tasks list.
+- `TaskPresetCombo`: Dropdown populated from `userpref.json` keys.
+*(Dynamic UI Rule: If `UsePresetCheck` is checked, disable Highest/Lowest combos and enable TaskPresetCombo. Vice versa if unchecked. Attach this to a UI Clicked event).*
 
-### 5. Cut Durations & Subclipping
-- Published media (movies/sequences) are generally already trimmed to match the cut. 
-- Passing absolute timecodes (e.g. 101 to 400) to DaVinci's `startFrame` parameter causes DaVinci to incorrectly chop off the first 101 frames of the file.
-- **The Fix**: The script calculates `duration = cut_out - cut_in` and explicitly instructs DaVinci to subclip the item starting from zero-offset: `startFrame = 0`, `endFrame = duration`. This guarantees mathematically perfect clip lengths.
+**Section: TIMELINE**
+- `TakeCountCombo`: Dropdown ("None (Latest Only)", "Last 2 Versions", "Last 3 Versions", "Last 4 Versions", "Last 5 Versions", "All Versions").
+- `UseLatestTimeline`: Checkbox to update the latest matching timeline (clears clips first).
 
-### 6. Timeline Assembly & Track Management
-- **Timeline Wiping**: If "Update latest timeline" is checked, the script searches the `timeline` bin for all timelines starting with the Sequence name, sorts them to find the most recent, and aggressively iterates over every Video, Audio, and Subtitle track using `DeleteClips()` to provide a blank slate.
-- **Video Append**: Appends all mapped video dictionaries using `AppendToTimeline()`. If custom audio is requested, it adds `"mediaType": 1` to strip the `.mov` embedded audio, leaving Video Track 1 pristine.
-- **Audio Syncing & Appending**: 
-  - If Flow Audio is enabled, it ensures Audio Track 1 is created.
-  - Rather than blindly appending audio to the end of the timeline, the script loops over the newly laid Video clips on Video Track 1 and reads their absolute DaVinci timecodes (`GetStart()`).
-  - It assigns these exact timecodes to the `"recordFrame"` parameter of the corresponding `.wav` files.
-  - If a `.wav` file is missing for a shot, it gracefully skips it. An internal `video_index` mapping guarantees that the remaining audio files still snap exactly underneath their respective video clips without falling out of sync.
+**Footer**
+- `CancelBtn` & `BuildBtn` (Build Sequence).
+
+## 3. PATH RESOLUTION & PROXIES
+Create a `resolve_path(raw_path)` function:
+- Replaces `/` with `\`.
+- If path starts with `\s\prodanim\`, strip it and try checking the `W:\` drive, then fallback to `V:\`.
+- If it starts with `V:\` but doesn't exist, smartly swap to `W:\` and check again (and vice versa).
+
+Create a `get_missing_media_path()` function:
+- Downloads a red "NO CLIP" placeholder image from `https://dummyimage.com/1920x1080/ff0000/ffffff.jpg?text=NO+CLIP` to the proxy directory using `urllib.request`.
+
+## 4. SHOTGRID QUERY LOGIC (`fetch_flow_data`)
+When the user clicks "Build Sequence", query SG:
+1. Find the Project ID.
+2. Find all `Shot` entities where `sg_sequence` matches `SeqCombo`. Retrieve `code`, `sg_cut_in`, `sg_cut_out`, `sg_head_in`.
+3. If `UseAudio` is checked, find `PublishedFile` entities of type `EditingSound` or `Sound` linked to the sequence. Resolve their paths.
+4. Determine the `valid_tasks` array: If `UsePresetCheck` is checked, use the array from `userpref.json`. Otherwise, slice the `tasks` array from config using the Highest to Lowest indices.
+5. Query `Version` entities for all found shots filtered by `valid_tasks`. Get `sg_path_to_movie`, `sg_path_to_frames`, `created_at`, `sg_uploaded_movie_mp4`.
+
+**Version Filtering & Grouping:**
+- For each shot, loop through `valid_tasks` in exact order. Stop at the first task that returns media.
+- For that task, group versions by their base name (stripping out `-mjpeg`, `-dnxhd`, `.mov`).
+- If duplicates exist for a base version, prioritize `dnxhd` (score=2) over `mjpeg` (score=1).
+- Sort the unique versions by `created_at` (Newest first).
+- Slice the array based on the `TakeCountCombo` limit (e.g. Last 2 Versions = slice `[:2]`).
+- The newest version `[0]` is the base path. All others `[1:]` are stored in a `takes` list for that shot.
+- If a version has no local path but has a web url, flag `is_web_proxy = True`.
+
+## 5. MEDIA IMPORT & DAVINCI ASSEMBLY
+1. Check if the timeline exists. If `UseLatestTimeline` is checked, clear all clips via `target_timeline.DeleteClips()`. Otherwise, create a new timeline `SeqNumber_YYYY_MM_DD`.
+2. Sort the processed shots alphabetically by `shot_code`.
+3. Loop through shots:
+   - If `is_web_proxy` is true (for base or takes), use `urllib.request.urlretrieve` to download it to `PROXY_DOWNLOAD_PATH` before importing.
+   - Import base media to `movies` bin in the Media Pool. Import take media to the same bin.
+   - Construct `clip_info` dictionary for `AppendToTimeline()`. Calculate duration: `endFrame = sg_cut_out - sg_cut_in`. (If missing placeholder, default to 48 frames or the cut duration).
+   - Track mapped Takes: Store the target `video_index` (len of current video clips list) alongside the imported take `MediaPoolItem`s.
+   - Import Audio to `audio` bin if enabled. Map its `trackIndex` to 1.
+4. Call `appended_items = media_pool.AppendToTimeline(video_clip_infos)`.
+5. Iterate through `appended_items`. If an item's index matches our tracked Takes, call `timeline_item.AddTake(take_media_pool_item, startFrame=0, endFrame=duration)`.
+6. Append Audio infos to timeline using `recordFrame = video_item.GetStart()` to perfectly sync.
+
+## 6. EXECUTION
+Show the window and start the Fusion `dispatcher.RunLoop()`. Hide window on completion or cancel.
