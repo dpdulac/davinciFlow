@@ -187,8 +187,8 @@ layout = ui.VGroup([
         ui.CheckBox({'ID': 'UseAudio', 'Text': 'Import .wav files from Flow', 'Checked': False})
     ]),
     ui.HGroup([
-        ui.Label({'Text': 'Load All Versions as Takes:'}),
-        ui.CheckBox({'ID': 'LoadTakesCheck', 'Checked': False})
+        ui.Label({'Text': 'Load Takes:'}),
+        ui.ComboBox({'ID': 'TakeCountCombo', 'Weight': 2})
     ]),
     ui.HGroup([
         ui.Label({'Text': 'Timeline Options:'}),
@@ -220,6 +220,13 @@ for t in MASTER_TASKS:
     items["HighestTaskCombo"].AddItem(t)
     items["LowestTaskCombo"].AddItem(t)
 
+items["TakeCountCombo"].AddItem("None (Latest Only)")
+items["TakeCountCombo"].AddItem("Last 2 Versions")
+items["TakeCountCombo"].AddItem("Last 3 Versions")
+items["TakeCountCombo"].AddItem("Last 4 Versions")
+items["TakeCountCombo"].AddItem("Last 5 Versions")
+items["TakeCountCombo"].AddItem("All Versions")
+
 # Set defaults for task ranges
 if MASTER_TASKS:
     items["HighestTaskCombo"].CurrentIndex = 0
@@ -228,7 +235,7 @@ if MASTER_TASKS:
 # ==========================================
 # FETCH DATA
 # ==========================================
-def fetch_flow_data(project_name, sequence_name, highest_idx, lowest_idx, use_image_seq, use_audio, load_all_versions):
+def fetch_flow_data(project_name, sequence_name, highest_idx, lowest_idx, use_image_seq, use_audio, max_versions):
     print(f"Connecting to Flow as '{SCRIPT_NAME}'...")
     try:
         sg = shotgun_api3.Shotgun(FLOW_URL, script_name=SCRIPT_NAME, api_key=SCRIPT_KEY)
@@ -305,7 +312,7 @@ def fetch_flow_data(project_name, sequence_name, highest_idx, lowest_idx, use_im
             if found_media:
                 break
                 
-            found_versions = []
+            found_versions_dict = {}
             
             for v in versions:
                 v_shot_id = v.get('entity', {}).get('id')
@@ -337,14 +344,29 @@ def fetch_flow_data(project_name, sequence_name, highest_idx, lowest_idx, use_im
                                         is_web_proxy = True
                                     
                     if path_to_use:
-                        found_versions.append({
-                            'path': path_to_use,
-                            'is_web_proxy': is_web_proxy
-                        })
+                        v_code = v.get('code', '') or ''
+                        base_v_code = v_code.lower().replace('-mjpeg', '').replace('-dnxhd', '').replace('.mov', '')
                         
-            if found_versions:
+                        existing = found_versions_dict.get(base_v_code)
+                        score = 2 if 'dnxhd' in path_to_use.lower() or 'dnxhd' in v_code.lower() else 1
+                        
+                        if not existing or score > existing['score']:
+                            found_versions_dict[base_v_code] = {
+                                'path': path_to_use,
+                                'is_web_proxy': is_web_proxy,
+                                'score': score,
+                                'created_at': v.get('created_at') or ''
+                            }
+                        
+            if found_versions_dict:
+                found_versions = list(found_versions_dict.values())
+                found_versions.sort(key=lambda x: x['created_at'], reverse=True)
+                
+                if max_versions > 0:
+                    found_versions = found_versions[:max_versions]
+                    
                 base_ver = found_versions[0]
-                takes_list = found_versions[1:] if load_all_versions else []
+                takes_list = found_versions[1:]
                 
                 media_dict[shot_id] = {
                     'shot_code': shot_code,
@@ -386,7 +408,17 @@ def OnBuild(ev):
     use_img = items["ImageSeqCheck"].Checked
     use_audio = items["UseAudio"].Checked
     use_latest_timeline = items["UseLatestTimeline"].Checked
-    load_takes = items["LoadTakesCheck"].Checked
+    
+    take_combo_text = items["TakeCountCombo"].CurrentText
+    if take_combo_text == "None (Latest Only)":
+        max_versions = 1
+    elif take_combo_text == "All Versions":
+        max_versions = 0
+    else:
+        try:
+            max_versions = int(take_combo_text.split(" ")[1])
+        except:
+            max_versions = 0
     
     if highest_idx > lowest_idx:
         print("Error: Highest task must be above Lowest task in the hierarchy.")
@@ -396,7 +428,7 @@ def OnBuild(ev):
     
     print(f"\n--- Starting Build for {project_name} Sequence {seq_padded} ---")
     # 1. Fetch
-    media_data = fetch_flow_data(project_name, seq_padded, highest_idx, lowest_idx, use_img, use_audio, load_takes)
+    media_data = fetch_flow_data(project_name, seq_padded, highest_idx, lowest_idx, use_img, use_audio, max_versions)
     if not media_data:
         print("No media data gathered.")
         return
