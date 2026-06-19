@@ -15,13 +15,33 @@ This utility allows artists to instantly query ShotGrid for a specific sequence,
 * **Auto-Proxies:** If a file exists on ShotGrid but isn't available locally, the script automatically downloads the web proxy. If no proxy exists, it automatically generates and inserts a red "NO CLIP" placeholder to maintain timeline sync.
 * **Audio Sync:** Optionally fetches published audio tracks from Flow and syncs them perfectly to the timeline start.
 
+## 📦 Dependencies
+
+This script requires external Python libraries to communicate with ShotGrid and process timelines. Ensure they are installed in the Python environment that DaVinci Resolve uses:
+
+```bash
+# Core Requirements
+pip install shotgun_api3
+
+# Optional / Future Requirements
+pip install opentimelineio
+```
+
 ## 🚀 Installation
 
-1. Ensure you have the `shotgun_api3` library installed in your local Python environment that DaVinci Resolve uses.
-2. Copy `davinciFlow.py`, `davinciFlow_config.json`, and `userpref.json` to your DaVinci Resolve utility scripts folder:
-   * **Windows:** `C:\ProgramData\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility\davinciFlow\`
-   * **Mac:** `/Library/Application Support/Blackmagic Design/DaVinci Resolve/Fusion/Scripts/Utility/davinciFlow/`
-3. Launch DaVinci Resolve. Open the top menu: **Workspace > Scripts > davinciFlow**.
+Copy `davinciFlow.py`, `davinciFlow_config.json`, and `userpref.json` into your DaVinci Resolve utility scripts folder based on your operating system:
+
+* **Windows:**
+  `C:\ProgramData\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility\davinciFlow\`
+* **Mac OS:**
+  `/Library/Application Support/Blackmagic Design/DaVinci Resolve/Fusion/Scripts/Utility/davinciFlow/`
+* **Linux:**
+  `/opt/resolve/Fusion/Scripts/Utility/davinciFlow/`  
+  *(Note: Depending on your Linux installation, it may also be located at `~/.local/share/DaVinciResolve/Fusion/Scripts/Utility/`)*
+
+Once copied:
+1. Launch DaVinci Resolve Studio.
+2. Open the top menu: **Workspace > Scripts > davinciFlow > davinciFlow**.
 
 ## ⚙️ Configuration
 
