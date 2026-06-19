@@ -172,6 +172,7 @@ initial_sequences = get_sequences(PROJECTS[0]) if PROJECTS else ["0575"]
 if not initial_sequences: initial_sequences = ["0575"]
 
 layout = ui.VGroup([
+    ui.Label({"Text": "--- FLOW ---", "Alignment": {"AlignHCenter": True}}),
     ui.HGroup([
         ui.Label({"Text": "Project:"}),
         ui.ComboBox({"ID": "ProjectCombo", "Weight": 2})
@@ -181,22 +182,6 @@ layout = ui.VGroup([
         ui.ComboBox({"ID": "SeqCombo", "Weight": 2})
     ]),
     ui.HGroup([
-        ui.Label({"Text": "Highest Task:"}),
-        ui.ComboBox({"ID": "HighestTaskCombo", "Weight": 2})
-    ]),
-    ui.HGroup([
-        ui.Label({"Text": "Lowest Task:"}),
-        ui.ComboBox({"ID": "LowestTaskCombo", "Weight": 2})
-    ]),
-    ui.HGroup([
-        ui.Label({"Text": "Use Task Presets:"}),
-        ui.CheckBox({"ID": "UsePresetCheck", "Checked": False})
-    ]),
-    ui.HGroup([
-        ui.Label({"Text": "Task Preset:"}),
-        ui.ComboBox({"ID": "TaskPresetCombo", "Weight": 2})
-    ]),
-    ui.HGroup([
         ui.Label({"Text": "Use Image Sequences:"}),
         ui.CheckBox({"ID": "ImageSeqCheck", "Checked": False})
     ]),
@@ -204,6 +189,26 @@ layout = ui.VGroup([
         ui.Label({'Text': 'Use Flow Audio:'}),
         ui.CheckBox({'ID': 'UseAudio', 'Text': 'Import .wav files from Flow', 'Checked': False})
     ]),
+    ui.VGap(5),
+    
+    ui.Label({"Text": "--- TASKS ---", "Alignment": {"AlignHCenter": True}}),
+    ui.HGroup([
+        ui.Label({"Text": "Use Task Presets (Overrides High/Low):"}),
+        ui.CheckBox({"ID": "UsePresetCheck", "Checked": False})
+    ]),
+    ui.HGroup([
+        ui.Label({"Text": "Highest:"}),
+        ui.ComboBox({"ID": "HighestTaskCombo", "Weight": 1}),
+        ui.Label({"Text": "Lowest:"}),
+        ui.ComboBox({"ID": "LowestTaskCombo", "Weight": 1})
+    ]),
+    ui.HGroup([
+        ui.Label({"Text": "Task Preset:"}),
+        ui.ComboBox({"ID": "TaskPresetCombo", "Weight": 2})
+    ]),
+    ui.VGap(5),
+    
+    ui.Label({"Text": "--- TIMELINE ---", "Alignment": {"AlignHCenter": True}}),
     ui.HGroup([
         ui.Label({'Text': 'Load Takes:'}),
         ui.ComboBox({'ID': 'TakeCountCombo', 'Weight': 2})
@@ -212,6 +217,7 @@ layout = ui.VGroup([
         ui.Label({'Text': 'Timeline Options:'}),
         ui.CheckBox({'ID': 'UseLatestTimeline', 'Text': 'Update latest timeline (clears existing clips)', 'Checked': True})
     ]),
+    
     ui.VGap(10),
     ui.HGroup({'Weight': 0, 'Spacing': 10}, [
         ui.Button({'ID': 'CancelBtn', 'Text': 'Cancel'}),
@@ -221,7 +227,7 @@ layout = ui.VGroup([
 
 win = dispatcher.AddWindow({
     "ID": "FlowDialog",
-    "Geometry": [400, 400, 500, 300],
+    "Geometry": [400, 400, 550, 450],
     "WindowTitle": "Flow to DaVinci Pipeline"
 }, layout)
 
