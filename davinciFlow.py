@@ -125,7 +125,7 @@ def get_sequences(project_name):
             ['sg_status_list', 'is_not', 'omt'],
         ]
         # Performance: Use summarize instead of fetching all shots
-        seqs = retry_sg(lambda: sg.summarize("Shot", filters, summary_fields=[{'field': 'sg_sequence', 'type': 'group'}]))
+        seqs = retry_sg(lambda: sg.summarize("Shot", filters, summary_fields=[{'field': 'id', 'type': 'count'}], grouping=[{'field': 'sg_sequence', 'type': 'exact', 'direction': 'asc'}]))
         seq_codes = []
         for group in seqs.get('groups', []):
             name = group.get('group_value', {}).get('name')
