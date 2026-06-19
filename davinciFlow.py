@@ -4,6 +4,18 @@ import json
 import datetime
 import urllib.request
 import wave
+import logging
+import time
+import concurrent.futures
+
+# Setup Logging
+LOG_PATH = os.path.join(os.path.dirname(__file__), "davinciFlow.log")
+logging.basicConfig(filename=LOG_PATH, level=logging.INFO, 
+                    format='%(asctime)s - %(levelname)s - %(message)s')
+
+def log(msg):
+    print(msg)
+    logging.info(msg)
 
 # ==========================================
 # FLOW AUTHENTICATION & CONFIG
@@ -72,23 +84,39 @@ media_pool = dvr_project.GetMediaPool()
 # ==========================================
 # HELPER FUNCTIONS
 # ==========================================
+def retry_sg(func, retries=3, delay=2):
+    """Wrapper to automatically retry ShotGrid API calls on connection timeouts."""
+    for i in range(retries):
+        try:
+            return func()
+        except Exception as e:
+            if i == retries - 1:
+                log(f"API Error after {retries} retries: {e}")
+                raise e
+            log(f"API Timeout, retrying in {delay} seconds...")
+            time.sleep(delay)
+
 def get_sequences(project_name):
-    print(f"Fetching sequences for project '{project_name}'...")
+    log(f"Fetching sequences for project '{project_name}'...")
     try:
         sg = shotgun_api3.Shotgun(FLOW_URL, script_name=SCRIPT_NAME, api_key=SCRIPT_KEY)
-        proj = sg.find_one("Project", [["name", "is", project_name]], ["id"])
+        proj = retry_sg(lambda: sg.find_one("Project", [["name", "is", project_name]], ["id"]))
         if not proj: return []
         filters = [
             ['project', 'is', proj],
             ['code', 'is_not', 'omit'],
             ['sg_status_list', 'is_not', 'omt'],
         ]
-        seqs = sg.find("Sequence", filters, ["code"])
-        seq_codes = [s['code'] for s in seqs if s.get('code')]
+        # Performance: Use summarize instead of fetching all shots
+        seqs = retry_sg(lambda: sg.summarize("Shot", filters, summary_fields=[{'field': 'sg_sequence', 'type': 'group'}]))
+        seq_codes = []
+        for group in seqs.get('groups', []):
+            name = group.get('group_value', {}).get('name')
+            if name: seq_codes.append(name)
         seq_codes.sort()
         return seq_codes
     except Exception as e:
-        print("Failed to fetch sequences:", e)
+        log(f"Failed to fetch sequences: {e}")
         return []
 
 def get_missing_media_path():
@@ -263,27 +291,34 @@ if MASTER_TASKS:
 # ==========================================
 # FETCH DATA
 # ==========================================
+PROJECT_CACHE = {}
+
 def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use_audio, max_versions):
-    print(f"Connecting to Flow as '{SCRIPT_NAME}'...")
+    log(f"Connecting to Flow as '{SCRIPT_NAME}'...")
     try:
         sg = shotgun_api3.Shotgun(FLOW_URL, script_name=SCRIPT_NAME, api_key=SCRIPT_KEY)
     except Exception as e:
-        print(f"Connection Failed: {e}")
+        log(f"Connection Failed: {e}")
         return None
 
-    project = sg.find_one("Project", [["name", "is", project_name]], ["id", "name"])
+    project = PROJECT_CACHE.get(project_name)
     if not project:
-        print(f"Project '{project_name}' not found.")
+        project = retry_sg(lambda: sg.find_one("Project", [["name", "is", project_name]], ["id", "name"]))
+        if project:
+            PROJECT_CACHE[project_name] = project
+            
+    if not project:
+        log(f"Project '{project_name}' not found.")
         return None
 
     # Fetch all shots in sequence to get timing and ID
-    print(f"\nQuerying Shots for Sequence {sequence_name}...")
+    log(f"\nQuerying Shots for Sequence {sequence_name}...")
     shot_filters = [
         ['project', 'is', project],
         ['sg_sequence', 'name_is', sequence_name]
     ]
     shot_fields = ['id', 'code', 'sg_cut_in', 'sg_cut_out', 'sg_head_in']
-    shots = sg.find('Shot', shot_filters, shot_fields)
+    shots = retry_sg(lambda: sg.find('Shot', shot_filters, shot_fields))
     
     if not shots:
         print("No shots found.")
@@ -294,12 +329,12 @@ def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use
     # Query Audio files dynamically only if requested
     audio_dict = {}
     if use_audio:
-        print("Querying Sequence Audio...")
+        log("Querying Sequence Audio...")
         audio_filters = [
             ['project', 'is', project],
             ['published_file_type.PublishedFileType.code', 'in', ['EditingSound', 'Sound']]
         ]
-        audio_pubs = sg.find('PublishedFile', audio_filters, ['code', 'entity', 'path'])
+        audio_pubs = retry_sg(lambda: sg.find('PublishedFile', audio_filters, ['code', 'entity', 'path']))
         for p in audio_pubs:
             ent = p.get('entity')
             ent_name = ent.get('name') if ent else ''
@@ -318,7 +353,7 @@ def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use
         ['sg_task.Task.content', 'in', valid_tasks]
     ]
     v_fields = ['entity', 'code', 'sg_path_to_movie', 'sg_path_to_frames', 'created_at', 'sg_uploaded_movie_mp4', 'sg_task']
-    versions = sg.find('Version', v_filters, v_fields)
+    versions = retry_sg(lambda: sg.find('Version', v_filters, v_fields))
     
     # Sort newest first
     versions.sort(key=lambda x: x.get('created_at') or '', reverse=True)
@@ -471,11 +506,11 @@ def OnBuild(ev):
         
     dispatcher.ExitLoop()
     
-    print(f"\n--- Starting Build for {project_name} Sequence {seq_padded} ---")
+    log(f"\n--- Starting Build for {project_name} Sequence {seq_padded} ---")
     # 1. Fetch
     media_data = fetch_flow_data(project_name, seq_padded, valid_tasks, use_img, use_audio, max_versions)
     if not media_data:
-        print("No media data gathered.")
+        log("No media data gathered.")
         return
         
     seq_bin = get_or_create_bin(seq_padded)
@@ -492,49 +527,68 @@ def OnBuild(ev):
     
     sorted_shots = sorted(media_data.values(), key=lambda x: x['shot_code'])
     
-    print("\n=== Resolving Media Paths ===")
+    log("\n=== Resolving Media Paths ===")
+    if not os.path.exists(PROXY_DOWNLOAD_PATH):
+        os.makedirs(PROXY_DOWNLOAD_PATH, exist_ok=True)
+        
+    # Phase 1: Collect all web proxy downloads needed
+    download_tasks = []
+    
+    for data in sorted_shots:
+        for idx, take_data in enumerate(data.get('takes', [])):
+            if take_data['is_web_proxy']:
+                safe_name = f"{data['shot_code']}_{data['task']}_v{idx+2}_proxy.mp4"
+                local_proxy_path = os.path.join(PROXY_DOWNLOAD_PATH, safe_name)
+                if not os.path.exists(local_proxy_path):
+                    download_tasks.append((take_data['path'], local_proxy_path, safe_name))
+                
+        if data.get('is_web_proxy'):
+            safe_name = f"{data['shot_code']}_{data['task']}_proxy.mp4"
+            local_proxy_path = os.path.join(PROXY_DOWNLOAD_PATH, safe_name)
+            if not os.path.exists(local_proxy_path):
+                download_tasks.append((data['path'], local_proxy_path, safe_name))
+                
+    # Phase 2: Download them all in parallel!
+    if download_tasks:
+        log(f"Starting {len(download_tasks)} parallel proxy downloads... Please wait.")
+        def _dl(url, lpath, sname):
+            try:
+                req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                with open(lpath, 'wb') as f:
+                    f.write(urllib.request.urlopen(req).read())
+                return f"Success: {sname}"
+            except Exception as e:
+                return f"Failed: {sname} ({e})"
+                
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            futures = [executor.submit(_dl, t[0], t[1], t[2]) for t in download_tasks]
+            for f in concurrent.futures.as_completed(futures):
+                logging.info(f.result())
+        log("All parallel downloads finished!")
+        
+    # Phase 3: Resolve paths normally
     for data in sorted_shots:
         path = data['path']
         is_missing = (path == 'MISSING')
         is_web_proxy = data.get('is_web_proxy', False)
         
-        # Resolve take paths
         takes_data_list = []
         for idx, take_data in enumerate(data.get('takes', [])):
             take_path = take_data['path']
-            is_wp = take_data['is_web_proxy']
-            if is_wp:
+            if take_data['is_web_proxy']:
                 safe_name = f"{data['shot_code']}_{data['task']}_v{idx+2}_proxy.mp4"
-                local_proxy_path = os.path.join(PROXY_DOWNLOAD_PATH, safe_name)
-                print(f"Downloading Web Proxy for Take: {safe_name}...")
-                if not os.path.exists(local_proxy_path):
-                    try:
-                        urllib.request.urlretrieve(take_path, local_proxy_path)
-                    except Exception as e:
-                        pass
-                take_path = local_proxy_path
+                take_path = os.path.join(PROXY_DOWNLOAD_PATH, safe_name)
             takes_data_list.append(take_path)
         
         if is_missing:
             path = get_missing_media_path()
-            print(f"Processing {data['shot_code']} -> MISSING MEDIA. Using placeholder.")
+            log(f"Processing {data['shot_code']} -> MISSING MEDIA. Using placeholder.")
         elif is_web_proxy:
-            if not os.path.exists(PROXY_DOWNLOAD_PATH):
-                os.makedirs(PROXY_DOWNLOAD_PATH, exist_ok=True)
-                
             safe_name = f"{data['shot_code']}_{data['task']}_proxy.mp4"
-            local_proxy_path = os.path.join(PROXY_DOWNLOAD_PATH, safe_name)
-            
-            print(f"Processing {data['shot_code']} ({data['task']}) -> Downloading Web Proxy...")
-            if not os.path.exists(local_proxy_path):
-                try:
-                    urllib.request.urlretrieve(path, local_proxy_path)
-                except Exception as e:
-                    print(f"Failed to download proxy for {data['shot_code']}: {e}")
-            
-            path = local_proxy_path
+            path = os.path.join(PROXY_DOWNLOAD_PATH, safe_name)
+            log(f"Processing {data['shot_code']} ({data['task']}) -> Using Local Proxy")
         else:
-            print(f"Processing {data['shot_code']} ({data['task']}) -> {path}")
+            log(f"Processing {data['shot_code']} ({data['task']}) -> {path}")
         
         # 1. Handle Video
         existing_clip = find_clip_in_folder(movies_bin, path)
