@@ -228,11 +228,91 @@ initial_sequences = get_sequences(PROJECTS[0]) if PROJECTS else ["0575"]
 if not initial_sequences: initial_sequences = ["0575"]
 
 layout = ui.VGroup([
-    ui.Label({"Text": "--- FLOW ---", "Alignment": {"AlignHCenter": True}}),
-    ui.HGroup([
-        ui.Label({"Text": "Project:", "ToolTip": "Select the Flow project to load"}),
-        ui.ComboBox({"ID": "ProjectCombo", "Weight": 2, "ToolTip": "Select the Flow project to load"})
+    # FLOW
+    ui.Button({"ID": "FlowHeaderBtn", "Text": "▼ FLOW", "Alignment": {"AlignLeft": True}, "Weight": 0}),
+    ui.VGroup({"ID": "FlowGrp", "Weight": 0}, [
+        ui.HGroup([
+            ui.Label({"Text": "Project:", "ToolTip": "Select the Flow project to load"}),
+            ui.ComboBox({"ID": "ProjectCombo", "Weight": 2, "ToolTip": "Select the Flow project to load"})
+        ]),
+        ui.HGroup([
+            ui.Label({"Text": "Sequence:", "Weight": 0}),
+            ui.ComboBox({"ID": "SeqCombo", "Weight": 2, "ToolTip": "Select the sequence to build"})
+        ]),
     ]),
+    
+    # SHOT
+    ui.Button({"ID": "ShotHeaderBtn", "Text": "▼ SHOT", "Alignment": {"AlignLeft": True}, "Weight": 0}),
+    ui.VGroup({"ID": "ShotGrp", "Weight": 0}, [
+        ui.HGroup([
+            ui.CheckBox({"ID": "AllShotsCheck", "Text": "All Shots", "Checked": True, "Weight": 0, "ToolTip": "Uncheck to build only specific shots"})
+        ]),
+        ui.HGroup([
+            ui.LineEdit({"ID": "ShotFilterLine", "Text": "", "Enabled": False, "PlaceholderText": "e.g. 10, 30, 60-120", "Weight": 2, "ToolTip": "Comma-separated list of shots or ranges"}),
+            ui.CheckBox({"ID": "ExcludeCheck", "Text": "Exclude", "Checked": False, "Enabled": False, "Weight": 0, "ToolTip": "If checked, the listed shots will be REMOVED from the timeline"})
+        ]),
+        ui.HGroup([
+            ui.Button({"ID": "ShowShotsBtn", "Text": "Show Shots", "Enabled": False, "Weight": 0, "ToolTip": "Display all available shots in this sequence"})
+        ]),
+    ]),
+    
+    # FILE
+    ui.Button({"ID": "FileHeaderBtn", "Text": "▼ FILE", "Alignment": {"AlignLeft": True}, "Weight": 0}),
+    ui.VGroup({"ID": "FileGrp", "Weight": 0}, [
+        ui.HGroup([
+            ui.Label({"Text": "Use Image Sequences:", "ToolTip": "Download and load heavy image sequences instead of proxy movies", "Weight": 0}),
+            ui.CheckBox({"ID": "ImageSeqCheck", "Checked": False, "ToolTip": "Download and load heavy image sequences instead of proxy movies", "Weight": 0}),
+            ui.VGap(2),
+            ui.CheckBox({"ID": "ApplyLutCheck", "Text": "Apply LUT", "Checked": True, "ToolTip": "Apply the color management LUT defined in the config to the EXR sequences", "Weight": 0}),
+            ui.Label({"Weight": 1})
+        ]),
+        ui.HGroup([
+            ui.Label({'Text': 'Audio File:', "ToolTip": "Fetch and sync published audio (.wav) from Flow to the timeline", "Weight": 0}),
+            ui.CheckBox({'ID': 'UseAudio', 'Checked': False, "ToolTip": "Fetch and sync published audio (.wav) from Flow to the timeline", "Weight": 0}),
+            ui.Label({"Weight": 1})
+        ]),
+    ]),
+    
+    # TASKS
+    ui.Button({"ID": "TaskHeaderBtn", "Text": "▼ TASKS", "Alignment": {"AlignLeft": True}, "Weight": 0}),
+    ui.VGroup({"ID": "TaskGrp", "Weight": 0}, [
+        ui.HGroup([
+            ui.Label({"Text": "Use Task Presets:", "ToolTip": "Use custom task groups instead of a High/Low range", "Weight": 0}),
+            ui.CheckBox({"ID": "UsePresetCheck", "Checked": False, "ToolTip": "Use custom task groups instead of a High/Low range", "Weight": 0}),
+            ui.Label({"Weight": 1})
+        ]),
+        ui.HGroup([
+            ui.Label({"Text": "Highest:", "ToolTip": "Top priority pipeline task"}),
+            ui.ComboBox({"ID": "HighestTaskCombo", "Weight": 1, "ToolTip": "Top priority pipeline task"}),
+            ui.Label({"Text": "Lowest:", "ToolTip": "Fallback pipeline task if higher tasks are missing media"}),
+            ui.ComboBox({"ID": "LowestTaskCombo", "Weight": 1, "ToolTip": "Fallback pipeline task if higher tasks are missing media"})
+        ]),
+        ui.HGroup([
+            ui.Label({"Text": "Task Preset:", "ToolTip": "Select a custom preset built in the UserPref Manager"}),
+            ui.ComboBox({"ID": "TaskPresetCombo", "Weight": 2, "ToolTip": "Select a custom preset built in the UserPref Manager"})
+        ]),
+    ]),
+    
+    # TIMELINE
+    ui.Button({"ID": "TimelineHeaderBtn", "Text": "▼ TIMELINE", "Alignment": {"AlignLeft": True}, "Weight": 0}),
+    ui.VGroup({"ID": "TimelineGrp", "Weight": 0}, [
+        ui.HGroup([
+            ui.Label({'Text': 'Load Takes:', "ToolTip": "Choose how many historical versions of a shot to stack into a DaVinci Take"}),
+            ui.ComboBox({'ID': 'TakeCountCombo', 'Weight': 2, "ToolTip": "Choose how many historical versions of a shot to stack into a DaVinci Take"})
+        ]),
+        ui.HGroup([
+            ui.Label({'Text': 'Timeline Options:', "ToolTip": "Manage timeline creation", "Weight": 0}),
+            ui.CheckBox({'ID': 'UseLatestTimeline', 'Text': 'Update latest timeline (clears existing clips)', 'Checked': True, "ToolTip": "Overwrite the latest matching timeline instead of cluttering your bins with new timelines", "Weight": 0}),
+            ui.Label({"Weight": 1})
+        ]),
+    ]),
+    
+    ui.VGap(10),
+    ui.HGroup({'Weight': 0, 'Spacing': 10}, [
+        ui.Button({'ID': 'CancelBtn', 'Text': 'Cancel', 'ToolTip': 'Close the tool'}),
+        ui.Button({'ID': 'BuildBtn', 'Text': 'Build Sequence', 'ToolTip': 'Fetch media from Flow and construct the timeline'})
+    ])
+]),
     ui.HGroup([
         ui.Label({"Text": "Sequence:", "Weight": 0}),
         ui.ComboBox({"ID": "SeqCombo", "Weight": 2, "ToolTip": "Select the sequence to build"})
@@ -950,12 +1030,36 @@ def OnShowShotsBtnClicked(ev):
     finally:
         items["ShowShotsBtn"].Text = "Show Shots"
 
+UI_STATE = {
+    "FlowGrp": True,
+    "ShotGrp": True,
+    "FileGrp": True,
+    "TaskGrp": True,
+    "TimelineGrp": True
+}
+
+def create_toggle_handler(group_id, btn_id, title):
+    def handler(ev):
+        UI_STATE[group_id] = not UI_STATE[group_id]
+        if UI_STATE[group_id]:
+            items[group_id].Show()
+            items[btn_id].Text = f"▼ {title}"
+        else:
+            items[group_id].Hide()
+            items[btn_id].Text = f"▶ {title}"
+    return handler
+
 win.On.BuildBtn.Clicked = OnBuild
 win.On.CancelBtn.Clicked = OnCancel
 win.On.FlowDialog.Close = OnCancel
 win.On.UsePresetCheck.Clicked = OnPresetCheck
 win.On.AllShotsCheck.Clicked = OnAllShotsCheck
 win.On.ShowShotsBtn.Clicked = OnShowShotsBtnClicked
+win.On.FlowHeaderBtn.Clicked = create_toggle_handler("FlowGrp", "FlowHeaderBtn", "FLOW")
+win.On.ShotHeaderBtn.Clicked = create_toggle_handler("ShotGrp", "ShotHeaderBtn", "SHOT")
+win.On.FileHeaderBtn.Clicked = create_toggle_handler("FileGrp", "FileHeaderBtn", "FILE")
+win.On.TaskHeaderBtn.Clicked = create_toggle_handler("TaskGrp", "TaskHeaderBtn", "TASKS")
+win.On.TimelineHeaderBtn.Clicked = create_toggle_handler("TimelineGrp", "TimelineHeaderBtn", "TIMELINE")
 
 # ==========================================
 # EXECUTE UI
