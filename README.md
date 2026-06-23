@@ -57,7 +57,8 @@ Define your global pipeline rules here.
   "proxy_download_path": "T:\\flowDavinci",
   "projects": ["ProjectA", "ProjectB"],
   "tasks": ["delivery", "compo_comp", "anim_main", "layout_base", "editing_edt"],
-  "verbose_level": 3
+  "verbose_level": 3,
+  "userpref_dir": "/homes/shared_prefs"
 }
 ```
 

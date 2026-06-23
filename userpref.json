@@ -27,6 +27,13 @@
       "layout_base",
       "previz_base",
       "editing_edt"
+    ],
+    "david": [
+      "compo_comp",
+      "compo_precomp",
+      "light_precomp",
+      "anim_main",
+      "editing_edt"
     ]
   }
 }

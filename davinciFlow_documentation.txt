@@ -17,6 +17,7 @@ It should fall back to default hardcoded credentials, but primarily attempt to l
 - `projects` (default: ["Tmnt2"])
 - `tasks` (default: `["delivery", "confo_render", "compo_comp", "compo_precomp", "light_precomp", "anim_main", "layout_base", "previz_base", "editing_edt"]`)
 - `verbose_level` (default: 3)
+- `userpref_dir` (default: `os.path.expanduser("~") + "/.flowDavinciData"`)
 
 It must also load a `userpref.json` (if it exists) which contains custom task arrays:
 ```json

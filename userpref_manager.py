@@ -17,7 +17,16 @@ if os.path.exists(davinci_dir):
 else:
     CONFIG_PATH = os.path.join(_dir, "davinciFlow_config.json")
 
-USERPREF_DIR = os.path.join(os.path.expanduser("~"), ".flowDavinciData")
+userpref_dir_override = None
+if os.path.exists(CONFIG_PATH):
+    try:
+        with open(CONFIG_PATH, 'r') as f:
+            _c = json.load(f)
+            userpref_dir_override = _c.get('userpref_dir')
+    except:
+        pass
+
+USERPREF_DIR = userpref_dir_override if userpref_dir_override else os.path.join(os.path.expanduser("~"), ".flowDavinciData")
 if not os.path.exists(USERPREF_DIR):
     os.makedirs(USERPREF_DIR, exist_ok=True)
 USERPREF_PATH = os.path.join(USERPREF_DIR, "userpref.json")

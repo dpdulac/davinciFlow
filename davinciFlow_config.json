@@ -1,20 +1,21 @@
 {
-  "flow_url": "https://mikrosanim.priv.shotgunstudio.com/",
-  "script_name": "resolveTest",
-  "script_key": "vblervsd(ubdZzxsxtvo5jimv",
-  "projects": [
-    "Tmnt2"
-  ],
-  "tasks": [
-    "delivery",
-    "compo_comp",
-    "compo_precomp",
-    "light_precomp",
-    "confo_render",
-    "anim_main",
-    "layout_base",
-    "previz_base",
-    "editing_edt"
-  ],
-  "proxy_download_path": "T:\\flowDavinci"
+    "flow_url":  "https://mikrosanim.priv.shotgunstudio.com/",
+    "script_name":  "resolveTest",
+    "script_key":  "vblervsd(ubdZzxsxtvo5jimv",
+    "projects":  [
+                     "Tmnt2"
+                 ],
+    "tasks":  [
+                  "delivery",
+                  "compo_comp",
+                  "compo_precomp",
+                  "light_precomp",
+                  "confo_render",
+                  "anim_main",
+                  "layout_base",
+                  "previz_base",
+                  "editing_edt"
+              ],
+    "proxy_download_path":  "T:\\flowDavinci",
+    "verbose_level":  3
 }
