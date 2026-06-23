@@ -644,9 +644,18 @@ def OnBuild(ev):
             else:
                 if data.get('cut_in') is not None and data.get('cut_out') is not None:
                     duration = int(data['cut_out']) - int(data['cut_in'])
-                    clip_info["startFrame"] = 0
-                    clip_info["endFrame"] = duration
-                    print(f"  -> Applying Duration constraint: {duration} frames (0 to {duration})")
+                    if use_img:
+                        try:
+                            start_f = int(existing_clip.GetClipProperty("Start"))
+                        except:
+                            start_f = int(data['cut_in'])
+                        clip_info["startFrame"] = start_f
+                        clip_info["endFrame"] = start_f + duration
+                        print(f"  -> Applying Image Seq constraint: {duration} frames ({start_f} to {start_f + duration})")
+                    else:
+                        clip_info["startFrame"] = 0
+                        clip_info["endFrame"] = duration
+                        print(f"  -> Applying Video constraint: {duration} frames (0 to {duration})")
                 
             video_clip_infos.append(clip_info)
             
