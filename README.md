@@ -58,7 +58,8 @@ Define your global pipeline rules here.
   "projects": ["ProjectA", "ProjectB"],
   "tasks": ["delivery", "compo_comp", "anim_main", "layout_base", "editing_edt"],
   "verbose_level": 3,
-  "userpref_dir": "/homes/shared_prefs"
+  "userpref_dir": "/homes/shared_prefs",
+  "exr_lut": "Mikros/TMNT2_acescg_to_vd16.cube"
 }
 ```
 

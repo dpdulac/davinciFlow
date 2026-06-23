@@ -56,6 +56,7 @@ if os.path.exists(CONFIG_PATH):
             PROXY_DOWNLOAD_PATH = config.get('proxy_download_path', PROXY_DOWNLOAD_PATH)
             PROJECTS = config.get('projects', PROJECTS)
             MASTER_TASKS = config.get('tasks', MASTER_TASKS)
+            EXR_LUT = config.get('exr_lut', '')
     except Exception as e:
         print(f"Failed to load json config: {e}")
 
@@ -749,6 +750,17 @@ def OnBuild(ev):
     print(f"Appending {len(video_clip_infos)} video clips to timeline...")
     appended_items = media_pool.AppendToTimeline(video_clip_infos)
     
+    if use_img and 'EXR_LUT' in globals() and EXR_LUT and appended_items:
+        print(f"Applying OCIO Editorial LUT '{EXR_LUT}' to EXR clips...")
+        try:
+            dvr_project.RefreshLUTList()
+            resolve.OpenPage("color")
+            for item in appended_items:
+                item.SetLUT(1, EXR_LUT)
+            resolve.OpenPage("edit")
+        except Exception as e:
+            print(f"Warning: Failed to apply OCIO LUT: {e}")
+            
     if appended_items and pending_takes_to_attach:
         print("Attaching previous versions as Takes...")
         for take_info in pending_takes_to_attach:
