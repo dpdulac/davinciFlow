@@ -73,7 +73,8 @@ def log(msg, level=3):
     elif level == 3: logging.info(msg)
     elif level >= 4: logging.debug(msg)
 
-USERPREF_PATH = os.path.join(SCRIPT_DIR, "userpref.json")
+USERPREF_DIR = os.path.join(os.path.expanduser("~"), ".flowDavinciData")
+USERPREF_PATH = os.path.join(USERPREF_DIR, "userpref.json")
 user_presets = {}
 if os.path.exists(USERPREF_PATH):
     try:

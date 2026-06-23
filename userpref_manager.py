@@ -14,10 +14,13 @@ except NameError:
 davinci_dir = r"C:\ProgramData\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility\davinciFlow"
 if os.path.exists(davinci_dir):
     CONFIG_PATH = os.path.join(davinci_dir, "davinciFlow_config.json")
-    USERPREF_PATH = os.path.join(davinci_dir, "userpref.json")
 else:
     CONFIG_PATH = os.path.join(_dir, "davinciFlow_config.json")
-    USERPREF_PATH = os.path.join(_dir, "userpref.json")
+
+USERPREF_DIR = os.path.join(os.path.expanduser("~"), ".flowDavinciData")
+if not os.path.exists(USERPREF_DIR):
+    os.makedirs(USERPREF_DIR, exist_ok=True)
+USERPREF_PATH = os.path.join(USERPREF_DIR, "userpref.json")
 
 class UserPrefManager(QMainWindow):
     def __init__(self):
