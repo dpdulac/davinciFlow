@@ -530,8 +530,6 @@ def OnBuild(ev):
             return
         valid_tasks = MASTER_TASKS[highest_idx:lowest_idx+1]
         
-    dispatcher.ExitLoop()
-    
     log(f"\n--- Starting Build for {project_name} Sequence {seq_padded} ---", level=2)
     # 1. Fetch
     media_data = fetch_flow_data(project_name, seq_padded, valid_tasks, use_img, use_audio, max_versions)
@@ -780,8 +778,6 @@ def OnBuild(ev):
             media_pool.AppendToTimeline(final_audio_infos)
     
     print("Build Complete!")
-    win.Hide()
-
 def OnCancel(ev):
     dispatcher.ExitLoop()
 
