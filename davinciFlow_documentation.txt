@@ -7,8 +7,9 @@
 ## CONTEXT & GOAL
 Write a Python 3 script named `davinciFlow.py` that bridges ShotGrid (Flow) and DaVinci Resolve. The script must query ShotGrid for the latest (or historical) media files for a specific sequence of shots, download missing proxies, and assemble them chronologically into a DaVinci Resolve timeline using the `DaVinciResolveScript` and `fusion.UIManager` APIs.
 
-## 1. CONFIGURATION & AUTHENTICATION
+## 1. CONFIGURATION, AUTHENTICATION & DEPENDENCIES
 The script must authenticate with ShotGrid via `shotgun_api3`.
+It requires `PyOpenColorIO` (opencolorio) for LUT application on .exr files.
 It should fall back to default hardcoded credentials, but primarily attempt to load them from `davinciFlow_config.json`:
 - `flow_url` (default: "https://mikrosanim.priv.shotgunstudio.com/")
 - `script_name` (default: "resolveTest")
@@ -32,7 +33,15 @@ Organize it into three distinct visual sections using centered Labels (e.g. `---
 **Section: FLOW**
 - `ProjectCombo`: Dropdown of projects from config.
 - `SeqCombo`: Dropdown of sequence numbers (e.g. "0575") fetched live from SG upon launch.
+**Section: SHOT**
+- `AllShotsCheck`: Checkbox to build all sequence shots.
+- `ShotFilterLine`: LineEdit (enabled if AllShotsCheck is false) to parse ranges like "10, 30, 60-120".
+- `ExcludeCheck`: Checkbox to invert the filter (exclude listed shots).
+- `ShowShotsBtn`: Button that launches a secondary window containing a `ui.Tree` of available shots with multi-selection support, and an "Add to Filter" button to populate the ShotFilterLine.
+
+**Section: FILE**
 - `ImageSeqCheck`: Checkbox (Use Image Sequences instead of movies).
+- `ApplyLutCheck`: Checkbox to apply the OCIO LUT to `.exr` sequences.
 - `UseAudio`: Checkbox (Import .wav files from Flow).
 
 **Section: TASKS**

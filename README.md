@@ -14,6 +14,8 @@ This utility allows artists to instantly query ShotGrid for a specific sequence,
 * **Smart Pathing:** Automatically resolves path differences between local workstations (e.g., swapping `W:\` and `V:\` drive letters on the fly).
 * **Auto-Proxies & Parallel Acceleration:** If a file exists on ShotGrid but isn't available locally, the script utilizes a `ThreadPoolExecutor` to download web proxies simultaneously in parallel for massive speed boosts. If no proxy exists, it generates a red "NO CLIP" placeholder.
 * **Audio Sync:** Optionally fetches published audio tracks from Flow and syncs them perfectly to the timeline start.
+* **Shot Filtering & Exclusions:** Target specific shots by inputting ranges (e.g. `10, 30, 60-120`) or click "Show Shots" to visually select shots. You can also reverse the filter with the new **Exclude** checkbox to build everything *except* the selected shots.
+* **Color Management (LUT):** Applies studio LUTs to .exr image sequences seamlessly via PyOpenColorIO integration.
 * **Scalable Verbose Logging:** A fully configurable 0 to 5 logging level system allowing for silent operations (0) or deep technical tracing (5).
 
 ## 📦 Dependencies
