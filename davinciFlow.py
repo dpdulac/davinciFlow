@@ -228,54 +228,54 @@ if not initial_sequences: initial_sequences = ["0575"]
 layout = ui.VGroup([
     ui.Label({"Text": "--- FLOW ---", "Alignment": {"AlignHCenter": True}}),
     ui.HGroup([
-        ui.Label({"Text": "Project:"}),
-        ui.ComboBox({"ID": "ProjectCombo", "Weight": 2})
+        ui.Label({"Text": "Project:", "ToolTip": "Select the Flow project to load"}),
+        ui.ComboBox({"ID": "ProjectCombo", "Weight": 2, "ToolTip": "Select the Flow project to load"})
     ]),
     ui.HGroup([
-        ui.Label({"Text": "Sequence Number:"}),
-        ui.ComboBox({"ID": "SeqCombo", "Weight": 2})
+        ui.Label({"Text": "Sequence Number:", "ToolTip": "Select the sequence to build"}),
+        ui.ComboBox({"ID": "SeqCombo", "Weight": 2, "ToolTip": "Select the sequence to build"})
     ]),
     ui.HGroup([
-        ui.Label({"Text": "Use Image Sequences:"}),
-        ui.CheckBox({"ID": "ImageSeqCheck", "Checked": False})
+        ui.Label({"Text": "Use Image Sequences:", "ToolTip": "Download and load heavy image sequences instead of proxy movies"}),
+        ui.CheckBox({"ID": "ImageSeqCheck", "Checked": False, "ToolTip": "Download and load heavy image sequences instead of proxy movies"})
     ]),
     ui.HGroup([
-        ui.Label({'Text': 'Use Flow Audio:'}),
-        ui.CheckBox({'ID': 'UseAudio', 'Text': 'Import .wav files from Flow', 'Checked': False})
+        ui.Label({'Text': 'Audio File:', "ToolTip": "Fetch and sync published audio (.wav) from Flow to the timeline"}),
+        ui.CheckBox({'ID': 'UseAudio', 'Checked': False, "ToolTip": "Fetch and sync published audio (.wav) from Flow to the timeline"})
     ]),
     ui.VGap(5),
     
     ui.Label({"Text": "--- TASKS ---", "Alignment": {"AlignHCenter": True}}),
     ui.HGroup([
-        ui.Label({"Text": "Use Task Presets (Overrides High/Low):"}),
-        ui.CheckBox({"ID": "UsePresetCheck", "Checked": False})
+        ui.Label({"Text": "Use Task Presets (Overrides High/Low):", "ToolTip": "Use custom task groups instead of a High/Low range"}),
+        ui.CheckBox({"ID": "UsePresetCheck", "Checked": False, "ToolTip": "Use custom task groups instead of a High/Low range"})
     ]),
     ui.HGroup([
-        ui.Label({"Text": "Highest:"}),
-        ui.ComboBox({"ID": "HighestTaskCombo", "Weight": 1}),
-        ui.Label({"Text": "Lowest:"}),
-        ui.ComboBox({"ID": "LowestTaskCombo", "Weight": 1})
+        ui.Label({"Text": "Highest:", "ToolTip": "Top priority pipeline task"}),
+        ui.ComboBox({"ID": "HighestTaskCombo", "Weight": 1, "ToolTip": "Top priority pipeline task"}),
+        ui.Label({"Text": "Lowest:", "ToolTip": "Fallback pipeline task if higher tasks are missing media"}),
+        ui.ComboBox({"ID": "LowestTaskCombo", "Weight": 1, "ToolTip": "Fallback pipeline task if higher tasks are missing media"})
     ]),
     ui.HGroup([
-        ui.Label({"Text": "Task Preset:"}),
-        ui.ComboBox({"ID": "TaskPresetCombo", "Weight": 2})
+        ui.Label({"Text": "Task Preset:", "ToolTip": "Select a custom preset built in the UserPref Manager"}),
+        ui.ComboBox({"ID": "TaskPresetCombo", "Weight": 2, "ToolTip": "Select a custom preset built in the UserPref Manager"})
     ]),
     ui.VGap(5),
     
     ui.Label({"Text": "--- TIMELINE ---", "Alignment": {"AlignHCenter": True}}),
     ui.HGroup([
-        ui.Label({'Text': 'Load Takes:'}),
-        ui.ComboBox({'ID': 'TakeCountCombo', 'Weight': 2})
+        ui.Label({'Text': 'Load Takes:', "ToolTip": "Choose how many historical versions of a shot to stack into a DaVinci Take"}),
+        ui.ComboBox({'ID': 'TakeCountCombo', 'Weight': 2, "ToolTip": "Choose how many historical versions of a shot to stack into a DaVinci Take"})
     ]),
     ui.HGroup([
-        ui.Label({'Text': 'Timeline Options:'}),
-        ui.CheckBox({'ID': 'UseLatestTimeline', 'Text': 'Update latest timeline (clears existing clips)', 'Checked': True})
+        ui.Label({'Text': 'Timeline Options:', "ToolTip": "Manage timeline creation"}),
+        ui.CheckBox({'ID': 'UseLatestTimeline', 'Text': 'Update latest timeline (clears existing clips)', 'Checked': True, "ToolTip": "Overwrite the latest matching timeline instead of cluttering your bins with new timelines"})
     ]),
     
     ui.VGap(10),
     ui.HGroup({'Weight': 0, 'Spacing': 10}, [
-        ui.Button({'ID': 'CancelBtn', 'Text': 'Cancel'}),
-        ui.Button({'ID': 'BuildBtn', 'Text': 'Build Sequence'})
+        ui.Button({'ID': 'CancelBtn', 'Text': 'Cancel', 'ToolTip': 'Close the tool'}),
+        ui.Button({'ID': 'BuildBtn', 'Text': 'Build Sequence', 'ToolTip': 'Fetch media from Flow and construct the timeline'})
     ])
 ])
 
