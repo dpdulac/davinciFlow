@@ -909,6 +909,7 @@ def OnShowShotsBtnClicked(ev):
             ui.Tree({"ID": "ShotTree", "Weight": 1}),
             ui.HGroup({"Weight": 0}, [
                 ui.Button({"ID": "AddFilterBtn", "Text": "Add to Filter"}),
+                ui.Button({"ID": "ClearFilterBtn", "Text": "Clear Filter"}),
                 ui.Button({"ID": "CloseShotsBtn", "Text": "Close"})
             ])
         ])
@@ -956,11 +957,13 @@ def OnShowShotsBtnClicked(ev):
                 else:
                     items["ShotFilterLine"].Text = codes_str
                     
-            win_shots.Hide()
+        def OnClearFilter(ev_clear):
+            items["ShotFilterLine"].Text = ""
             
         win_shots.On.CloseShotsBtn.Clicked = OnShotsClose
         win_shots.On.ShotsWin.Close = OnShotsClose
         win_shots.On.AddFilterBtn.Clicked = OnAddFilter
+        win_shots.On.ClearFilterBtn.Clicked = OnClearFilter
         
         win_shots.Show()
     except Exception as e:
