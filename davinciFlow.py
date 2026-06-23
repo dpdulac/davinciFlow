@@ -241,9 +241,13 @@ layout = ui.VGroup([
     
     ui.Label({"Text": "--- SHOT ---", "Alignment": {"AlignHCenter": True}}),
     ui.HGroup([
-        ui.CheckBox({"ID": "AllShotsCheck", "Text": "All Shots", "Checked": True, "Weight": 0, "ToolTip": "Uncheck to build only specific shots"}),
+        ui.CheckBox({"ID": "AllShotsCheck", "Text": "All Shots", "Checked": True, "Weight": 0, "ToolTip": "Uncheck to build only specific shots"})
+    ]),
+    ui.HGroup([
         ui.LineEdit({"ID": "ShotFilterLine", "Text": "", "Enabled": False, "PlaceholderText": "e.g. 10, 30, 60-120", "Weight": 2, "ToolTip": "Comma-separated list of shots or ranges"}),
-        ui.CheckBox({"ID": "ExcludeCheck", "Text": "Exclude", "Checked": False, "Enabled": False, "Weight": 0, "ToolTip": "If checked, the listed shots will be REMOVED from the timeline"}),
+        ui.CheckBox({"ID": "ExcludeCheck", "Text": "Exclude", "Checked": False, "Enabled": False, "Weight": 0, "ToolTip": "If checked, the listed shots will be REMOVED from the timeline"})
+    ]),
+    ui.HGroup([
         ui.Button({"ID": "ShowShotsBtn", "Text": "Show Shots", "Enabled": False, "Weight": 0, "ToolTip": "Display all available shots in this sequence"})
     ]),
     ui.VGap(5),
