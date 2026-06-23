@@ -16,6 +16,7 @@ It should fall back to default hardcoded credentials, but primarily attempt to l
 - `proxy_download_path` (default: "T:\flowDavinci")
 - `projects` (default: ["Tmnt2"])
 - `tasks` (default: `["delivery", "confo_render", "compo_comp", "compo_precomp", "light_precomp", "anim_main", "layout_base", "previz_base", "editing_edt"]`)
+- `verbose_level` (default: 3)
 
 It must also load a `userpref.json` (if it exists) which contains custom task arrays:
 ```json
@@ -74,8 +75,9 @@ When the user clicks "Build Sequence", query SG:
 ## 5. MEDIA IMPORT & DAVINCI ASSEMBLY
 1. Check if the timeline exists. If `UseLatestTimeline` is checked, clear all clips via `target_timeline.DeleteClips()`. Otherwise, create a new timeline `SeqNumber_YYYY_MM_DD`.
 2. Sort the processed shots alphabetically by `shot_code`.
-3. Loop through shots:
-   - If `is_web_proxy` is true (for base or takes), use `urllib.request.urlretrieve` to download it to `PROXY_DOWNLOAD_PATH` before importing.
+3. Pre-flight phase: Gather all required web proxy downloads (base media or takes) where `is_web_proxy == True` and the local file doesn't exist yet.
+4. Execute downloads in parallel using `concurrent.futures.ThreadPoolExecutor(max_workers=10)` to accelerate batch fetching.
+5. Loop through shots to assemble:
    - Import base media to `movies` bin in the Media Pool. Import take media to the same bin.
    - Construct `clip_info` dictionary for `AppendToTimeline()`. Calculate duration: `endFrame = sg_cut_out - sg_cut_in`. (If missing placeholder, default to 48 frames or the cut duration).
    - Track mapped Takes: Store the target `video_index` (len of current video clips list) alongside the imported take `MediaPoolItem`s.
@@ -95,3 +97,8 @@ Also write a secondary standalone script using `PySide6`. This is a dedicated De
 - It uses a `QListWidget` to show currently added tasks in order, preventing duplicates via an error popup.
 - It has a "Save Preset" `QPushButton` that writes to `userpref.json`.
 - It has a `QTableWidget` to view all saved presets in `userpref.json`.
+
+## 8. LOGGING
+Implement a scalable logging system with levels 0-5.
+- Read `VERBOSE_LEVEL` from the json config.
+- Create a `log(msg, level=3)` helper function that checks against the global level before printing and delegates to Python's built-in `logging` module (`logging.error` for 1, `logging.warning` for 2, `logging.info` for 3, `logging.debug` for 4+).
