@@ -234,9 +234,17 @@ layout = ui.VGroup([
         ui.ComboBox({"ID": "ProjectCombo", "Weight": 2, "ToolTip": "Select the Flow project to load"})
     ]),
     ui.HGroup([
-        ui.Label({"Text": "Sequence Number:", "ToolTip": "Select the sequence to build"}),
+        ui.Label({"Text": "Sequence:", "Weight": 0}),
         ui.ComboBox({"ID": "SeqCombo", "Weight": 2, "ToolTip": "Select the sequence to build"})
     ]),
+    ui.HGroup([
+        ui.CheckBox({"ID": "AllShotsCheck", "Text": "All Shots", "Checked": True, "Weight": 0, "ToolTip": "Uncheck to build only specific shots"}),
+        ui.LineEdit({"ID": "ShotFilterLine", "Text": "", "Enabled": False, "PlaceholderText": "e.g. 10, 30, 60-120", "Weight": 2, "ToolTip": "Comma-separated list of shots or ranges"})
+    ]),
+    ui.HGroup([
+        ui.Label({"ID": "ShotFilterLabel", "Text": "Select a sequence to see available shots.", "Weight": 1, "WordWrap": True})
+    ]),
+    ui.VGap(5),
     ui.HGroup([
         ui.Label({"Text": "Use Image Sequences:", "ToolTip": "Download and load heavy image sequences instead of proxy movies", "Weight": 0}),
         ui.CheckBox({"ID": "ImageSeqCheck", "Checked": False, "ToolTip": "Download and load heavy image sequences instead of proxy movies", "Weight": 0}),
@@ -327,7 +335,7 @@ if MASTER_TASKS:
 # ==========================================
 PROJECT_CACHE = {}
 
-def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use_audio, max_versions):
+def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use_audio, max_versions, target_shots=None):
     log(f"Connecting to Flow as '{SCRIPT_NAME}'...")
     try:
         sg = shotgun_api3.Shotgun(FLOW_URL, script_name=SCRIPT_NAME, api_key=SCRIPT_KEY)
@@ -352,12 +360,23 @@ def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use
         ['sg_sequence', 'name_is', sequence_name]
     ]
     shot_fields = ['id', 'code', 'sg_cut_in', 'sg_cut_out', 'sg_head_in']
-    shots = retry_sg(lambda: sg.find('Shot', shot_filters, shot_fields))
+    shots = retry_sg(lambda: sg.find("Shot", shot_filters, shot_fields))
     
     if not shots:
-        print("No shots found.")
+        log(f"No shots found for sequence {sequence_name}.")
         return None
         
+    if target_shots:
+        filtered_shots = []
+        for s in shots:
+            if any(ts in s["code"] for ts in target_shots):
+                filtered_shots.append(s)
+        shots = filtered_shots
+        if not shots:
+            log("No shots matched the shot filter criteria.")
+            return None
+            
+    log(f"Found {len(shots)} shots. Resolving latest published files...")
     shot_dict = {s['id']: s for s in shots}
     
     # Query Audio files dynamically only if requested
@@ -508,7 +527,7 @@ def OnPresetCheck(ev):
     items["LowestTaskCombo"].Enabled = not checked
 
 def OnBuild(ev):
-    project_name = items["ProjectCombo"].CurrentText
+    proj_str = items["ProjectCombo"].CurrentText
     seq_str = items["SeqCombo"].CurrentText.strip()
     seq_padded = seq_str.zfill(4)
     highest_idx = int(items["HighestTaskCombo"].CurrentIndex)
@@ -539,9 +558,39 @@ def OnBuild(ev):
             return
         valid_tasks = MASTER_TASKS[highest_idx:lowest_idx+1]
         
-    log(f"\n--- Starting Build for {project_name} Sequence {seq_padded} ---", level=2)
+    # Parse target shots if not AllShotsCheck
+    target_shots = []
+    if not items["AllShotsCheck"].Checked:
+        filter_text = items["ShotFilterLine"].Text.strip()
+        if filter_text:
+            parts = filter_text.split(',')
+            for p in parts:
+                p = p.strip()
+                if '-' in p:
+                    subparts = p.split('-')
+                    if len(subparts) == 2 and subparts[0].isdigit() and subparts[1].isdigit():
+                        start = int(subparts[0])
+                        end = int(subparts[1])
+                        for i in range(start, end + 1):
+                            target_shots.append(str(i).zfill(4))
+                elif p.isdigit():
+                    target_shots.append(p.zfill(4))
+                    
+    print(f"Building Timeline for: Project={proj_str}, Seq={seq_padded}")
+    if target_shots:
+        print(f"Targeting specific shots: {target_shots}")
+        
+    log(f"\n--- Starting Build for {proj_str} Sequence {seq_padded} ---", level=2)
     # 1. Fetch
-    media_data = fetch_flow_data(project_name, seq_padded, valid_tasks, use_img, use_audio, max_versions)
+    media_data = fetch_flow_data(
+        project_name=proj_str,
+        sequence_name=seq_padded,
+        valid_tasks=valid_tasks,
+        use_image_seq=use_img,
+        use_audio=use_audio,
+        max_versions=max_versions,
+        target_shots=target_shots
+    )
     if not media_data:
         log("No media data gathered.", level=2)
         return
@@ -802,10 +851,42 @@ def OnBuild(ev):
 def OnCancel(ev):
     dispatcher.ExitLoop()
 
+def OnAllShotsCheck(ev):
+    items["ShotFilterLine"].Enabled = not items["AllShotsCheck"].Checked
+
+def update_shot_label():
+    try:
+        project_name = items["ProjectCombo"].CurrentText
+        seq_name = items["SeqCombo"].CurrentText
+        if not project_name or not seq_name:
+            return
+            
+        items["ShotFilterLabel"].Text = "Querying available shots from Flow..."
+        sg = shotgun_api3.Shotgun(FLOW_URL, script_name=SCRIPT_NAME, api_key=SCRIPT_KEY)
+        proj = sg.find_one("Project", [["name", "is", project_name]], ["id"])
+        if not proj: return
+        seq = sg.find_one("Sequence", [["code", "is", seq_name], ["project", "is", proj]], ["id"])
+        if not seq: return
+        
+        shots = sg.find("Shot", [["sg_sequence", "is", seq]], ["code"])
+        codes = sorted([s["code"] for s in shots])
+        items["ShotFilterLabel"].Text = f"Available: {', '.join(codes)}"
+    except Exception as e:
+        items["ShotFilterLabel"].Text = f"Error loading shots: {e}"
+
+def OnSeqComboChanged(ev):
+    import threading
+    t = threading.Thread(target=update_shot_label)
+    t.daemon = True
+    t.start()
+
 win.On.BuildBtn.Clicked = OnBuild
 win.On.CancelBtn.Clicked = OnCancel
 win.On.FlowDialog.Close = OnCancel
 win.On.UsePresetCheck.Clicked = OnPresetCheck
+win.On.AllShotsCheck.Clicked = OnAllShotsCheck
+win.On.SeqCombo.CurrentIndexChanged = OnSeqComboChanged
+win.On.ProjectCombo.CurrentIndexChanged = OnSeqComboChanged
 
 # ==========================================
 # EXECUTE UI
