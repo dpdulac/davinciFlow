@@ -238,21 +238,24 @@ layout = ui.VGroup([
         ui.ComboBox({"ID": "SeqCombo", "Weight": 2, "ToolTip": "Select the sequence to build"})
     ]),
     ui.HGroup([
-        ui.Label({"Text": "Use Image Sequences:", "ToolTip": "Download and load heavy image sequences instead of proxy movies"}),
-        ui.CheckBox({"ID": "ImageSeqCheck", "Checked": False, "ToolTip": "Download and load heavy image sequences instead of proxy movies"}),
+        ui.Label({"Text": "Use Image Sequences:", "ToolTip": "Download and load heavy image sequences instead of proxy movies", "Weight": 0}),
+        ui.CheckBox({"ID": "ImageSeqCheck", "Checked": False, "ToolTip": "Download and load heavy image sequences instead of proxy movies", "Weight": 0}),
         ui.VGap(2),
-        ui.CheckBox({"ID": "ApplyLutCheck", "Text": "Apply LUT", "Checked": True, "ToolTip": "Apply the color management LUT defined in the config to the EXR sequences"})
+        ui.CheckBox({"ID": "ApplyLutCheck", "Text": "Apply LUT", "Checked": True, "ToolTip": "Apply the color management LUT defined in the config to the EXR sequences", "Weight": 0}),
+        ui.Label({"Weight": 1})
     ]),
     ui.HGroup([
-        ui.Label({'Text': 'Audio File:', "ToolTip": "Fetch and sync published audio (.wav) from Flow to the timeline"}),
-        ui.CheckBox({'ID': 'UseAudio', 'Checked': False, "ToolTip": "Fetch and sync published audio (.wav) from Flow to the timeline"})
+        ui.Label({'Text': 'Audio File:', "ToolTip": "Fetch and sync published audio (.wav) from Flow to the timeline", "Weight": 0}),
+        ui.CheckBox({'ID': 'UseAudio', 'Checked': False, "ToolTip": "Fetch and sync published audio (.wav) from Flow to the timeline", "Weight": 0}),
+        ui.Label({"Weight": 1})
     ]),
     ui.VGap(5),
     
     ui.Label({"Text": "--- TASKS ---", "Alignment": {"AlignHCenter": True}}),
     ui.HGroup([
-        ui.Label({"Text": "Use Task Presets (Overrides High/Low):", "ToolTip": "Use custom task groups instead of a High/Low range"}),
-        ui.CheckBox({"ID": "UsePresetCheck", "Checked": False, "ToolTip": "Use custom task groups instead of a High/Low range"})
+        ui.Label({"Text": "Use Task Presets:", "ToolTip": "Use custom task groups instead of a High/Low range", "Weight": 0}),
+        ui.CheckBox({"ID": "UsePresetCheck", "Checked": False, "ToolTip": "Use custom task groups instead of a High/Low range", "Weight": 0}),
+        ui.Label({"Weight": 1})
     ]),
     ui.HGroup([
         ui.Label({"Text": "Highest:", "ToolTip": "Top priority pipeline task"}),
@@ -272,8 +275,9 @@ layout = ui.VGroup([
         ui.ComboBox({'ID': 'TakeCountCombo', 'Weight': 2, "ToolTip": "Choose how many historical versions of a shot to stack into a DaVinci Take"})
     ]),
     ui.HGroup([
-        ui.Label({'Text': 'Timeline Options:', "ToolTip": "Manage timeline creation"}),
-        ui.CheckBox({'ID': 'UseLatestTimeline', 'Text': 'Update latest timeline (clears existing clips)', 'Checked': True, "ToolTip": "Overwrite the latest matching timeline instead of cluttering your bins with new timelines"})
+        ui.Label({'Text': 'Timeline Options:', "ToolTip": "Manage timeline creation", "Weight": 0}),
+        ui.CheckBox({'ID': 'UseLatestTimeline', 'Text': 'Update latest timeline (clears existing clips)', 'Checked': True, "ToolTip": "Overwrite the latest matching timeline instead of cluttering your bins with new timelines", "Weight": 0}),
+        ui.Label({"Weight": 1})
     ]),
     
     ui.VGap(10),
