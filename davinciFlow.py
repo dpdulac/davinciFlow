@@ -239,7 +239,9 @@ layout = ui.VGroup([
     ]),
     ui.HGroup([
         ui.Label({"Text": "Use Image Sequences:", "ToolTip": "Download and load heavy image sequences instead of proxy movies"}),
-        ui.CheckBox({"ID": "ImageSeqCheck", "Checked": False, "ToolTip": "Download and load heavy image sequences instead of proxy movies"})
+        ui.CheckBox({"ID": "ImageSeqCheck", "Checked": False, "ToolTip": "Download and load heavy image sequences instead of proxy movies"}),
+        ui.VGap(2),
+        ui.CheckBox({"ID": "ApplyLutCheck", "Text": "Apply LUT", "Checked": True, "ToolTip": "Apply the color management LUT defined in the config to the EXR sequences"})
     ]),
     ui.HGroup([
         ui.Label({'Text': 'Audio File:', "ToolTip": "Fetch and sync published audio (.wav) from Flow to the timeline"}),
@@ -506,8 +508,9 @@ def OnBuild(ev):
     seq_str = items["SeqCombo"].CurrentText.strip()
     seq_padded = seq_str.zfill(4)
     highest_idx = int(items["HighestTaskCombo"].CurrentIndex)
-    lowest_idx = int(items["LowestTaskCombo"].CurrentIndex)
+    lowest_idx = items["LowestTaskCombo"].CurrentIndex
     use_img = items["ImageSeqCheck"].Checked
+    use_lut = items["ApplyLutCheck"].Checked
     use_audio = items["UseAudio"].Checked
     use_latest_timeline = items["UseLatestTimeline"].Checked
     
@@ -750,7 +753,7 @@ def OnBuild(ev):
     print(f"Appending {len(video_clip_infos)} video clips to timeline...")
     appended_items = media_pool.AppendToTimeline(video_clip_infos)
     
-    if use_img and 'EXR_LUT' in globals() and EXR_LUT and appended_items:
+    if use_img and use_lut and 'EXR_LUT' in globals() and EXR_LUT and appended_items:
         print(f"Applying OCIO Editorial LUT '{EXR_LUT}' to EXR clips...")
         try:
             dvr_project.RefreshLUTList()
