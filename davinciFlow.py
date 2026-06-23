@@ -239,10 +239,8 @@ layout = ui.VGroup([
     ]),
     ui.HGroup([
         ui.CheckBox({"ID": "AllShotsCheck", "Text": "All Shots", "Checked": True, "Weight": 0, "ToolTip": "Uncheck to build only specific shots"}),
-        ui.LineEdit({"ID": "ShotFilterLine", "Text": "", "Enabled": False, "PlaceholderText": "e.g. 10, 30, 60-120", "Weight": 2, "ToolTip": "Comma-separated list of shots or ranges"})
-    ]),
-    ui.HGroup([
-        ui.Label({"ID": "ShotFilterLabel", "Text": "Select a sequence to see available shots.", "Weight": 1, "WordWrap": True})
+        ui.LineEdit({"ID": "ShotFilterLine", "Text": "", "Enabled": False, "PlaceholderText": "e.g. 10, 30, 60-120", "Weight": 2, "ToolTip": "Comma-separated list of shots or ranges"}),
+        ui.Button({"ID": "ShowShotsBtn", "Text": "Show Shots", "Weight": 0, "ToolTip": "Display all available shots in this sequence"})
     ]),
     ui.VGap(5),
     ui.HGroup([
@@ -854,39 +852,65 @@ def OnCancel(ev):
 def OnAllShotsCheck(ev):
     items["ShotFilterLine"].Enabled = not items["AllShotsCheck"].Checked
 
-def update_shot_label():
+def OnShowShotsBtnClicked(ev):
+    project_name = items["ProjectCombo"].CurrentText
+    seq_name = items["SeqCombo"].CurrentText
+    if not project_name or not seq_name:
+        return
+        
+    items["ShowShotsBtn"].Text = "Loading..."
     try:
-        project_name = items["ProjectCombo"].CurrentText
-        seq_name = items["SeqCombo"].CurrentText
-        if not project_name or not seq_name:
-            return
-            
-        items["ShotFilterLabel"].Text = "Querying available shots from Flow..."
         sg = shotgun_api3.Shotgun(FLOW_URL, script_name=SCRIPT_NAME, api_key=SCRIPT_KEY)
         proj = sg.find_one("Project", [["name", "is", project_name]], ["id"])
-        if not proj: return
+        if not proj: raise Exception("Project not found")
         seq = sg.find_one("Sequence", [["code", "is", seq_name], ["project", "is", proj]], ["id"])
-        if not seq: return
+        if not seq: raise Exception("Sequence not found")
         
         shots = sg.find("Shot", [["sg_sequence", "is", seq]], ["code"])
         codes = sorted([s["code"] for s in shots])
-        items["ShotFilterLabel"].Text = f"Available: {', '.join(codes)}"
+        
+        # Build secondary window
+        layout_shots = ui.VGroup([
+            ui.Tree({"ID": "ShotTree"}),
+            ui.Button({"ID": "CloseShotsBtn", "Text": "Close", "Weight": 0})
+        ])
+        win_shots = dispatcher.AddWindow({
+            "ID": "ShotsWin",
+            "Geometry": [200, 200, 300, 400],
+            "WindowTitle": f"Available Shots: {seq_name}"
+        }, layout_shots)
+        
+        w_items = win_shots.GetItems()
+        tree = w_items["ShotTree"]
+        
+        hdr = tree.NewItem()
+        hdr.Text[0] = "Shot Code"
+        tree.SetHeaderItem(hdr)
+        tree.ColumnCount = 1
+        
+        for code in codes:
+            it = tree.NewItem()
+            it.Text[0] = code
+            tree.AddTopLevelItem(it)
+            
+        def OnShotsClose(ev_close):
+            win_shots.Hide()
+            
+        win_shots.On.CloseShotsBtn.Clicked = OnShotsClose
+        win_shots.On.ShotsWin.Close = OnShotsClose
+        
+        win_shots.Show()
     except Exception as e:
-        items["ShotFilterLabel"].Text = f"Error loading shots: {e}"
-
-def OnSeqComboChanged(ev):
-    import threading
-    t = threading.Thread(target=update_shot_label)
-    t.daemon = True
-    t.start()
+        print(f"Error fetching shots: {e}")
+    finally:
+        items["ShowShotsBtn"].Text = "Show Shots"
 
 win.On.BuildBtn.Clicked = OnBuild
 win.On.CancelBtn.Clicked = OnCancel
 win.On.FlowDialog.Close = OnCancel
 win.On.UsePresetCheck.Clicked = OnPresetCheck
 win.On.AllShotsCheck.Clicked = OnAllShotsCheck
-win.On.SeqCombo.CurrentIndexChanged = OnSeqComboChanged
-win.On.ProjectCombo.CurrentIndexChanged = OnSeqComboChanged
+win.On.ShowShotsBtn.Clicked = OnShowShotsBtnClicked
 
 # ==========================================
 # EXECUTE UI
