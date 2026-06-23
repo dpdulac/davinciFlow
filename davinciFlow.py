@@ -307,6 +307,15 @@ layout = ui.VGroup([
         ]),
     ]),
     
+    # ADVANCED
+    ui.Button({"ID": "AdvancedHeaderBtn", "Text": "▼ ADVANCED", "Alignment": {"AlignLeft": True}, "Weight": 0}),
+    ui.VGroup({"ID": "AdvancedGrp", "Weight": 0}, [
+        ui.HGroup([
+            ui.Button({'ID': 'CleanCacheBtn', 'Text': 'Clean Cache', 'ToolTip': 'Delete all downloaded MP4 proxies in the cache directory', 'Weight': 0}),
+            ui.Label({"Weight": 1})
+        ])
+    ]),
+    
     ui.VGap(10),
     ui.HGroup({'Weight': 0, 'Spacing': 10}, [
         ui.Button({'ID': 'CancelBtn', 'Text': 'Cancel', 'ToolTip': 'Close the tool'}),
@@ -316,7 +325,7 @@ layout = ui.VGroup([
 
 win = dispatcher.AddWindow({
     "ID": "FlowDialog",
-    "Geometry": [400, 400, 550, 450],
+    "Geometry": [400, 400, 550, 600],
     "WindowTitle": "Flow to DaVinci Pipeline"
 }, layout)
 
@@ -976,7 +985,8 @@ UI_STATE = {
     "ShotGrp": True,
     "FileGrp": True,
     "TaskGrp": True,
-    "TimelineGrp": True
+    "TimelineGrp": True,
+    "AdvancedGrp": True
 }
 
 def create_toggle_handler(group_id, btn_id, title):
@@ -990,6 +1000,24 @@ def create_toggle_handler(group_id, btn_id, title):
             items[btn_id].Text = f"▶ {title}"
     return handler
 
+def OnCleanCache(ev):
+    import shutil
+    import os
+    if os.path.exists(PROXY_DIR):
+        try:
+            for item in os.listdir(PROXY_DIR):
+                item_path = os.path.join(PROXY_DIR, item)
+                if os.path.isfile(item_path) or os.path.islink(item_path):
+                    os.unlink(item_path)
+                elif os.path.isdir(item_path):
+                    shutil.rmtree(item_path)
+            print(f"Cache cleaned successfully: {PROXY_DIR}")
+        except Exception as e:
+            print(f"Failed to clean cache: {e}")
+    else:
+        print("Cache directory does not exist yet.")
+
+win.On.CleanCacheBtn.Clicked = OnCleanCache
 win.On.BuildBtn.Clicked = OnBuild
 win.On.CancelBtn.Clicked = OnCancel
 win.On.FlowDialog.Close = OnCancel
@@ -1001,6 +1029,7 @@ win.On.ShotHeaderBtn.Clicked = create_toggle_handler("ShotGrp", "ShotHeaderBtn",
 win.On.FileHeaderBtn.Clicked = create_toggle_handler("FileGrp", "FileHeaderBtn", "FILE")
 win.On.TaskHeaderBtn.Clicked = create_toggle_handler("TaskGrp", "TaskHeaderBtn", "TASKS")
 win.On.TimelineHeaderBtn.Clicked = create_toggle_handler("TimelineGrp", "TimelineHeaderBtn", "TIMELINE")
+win.On.AdvancedHeaderBtn.Clicked = create_toggle_handler("AdvancedGrp", "AdvancedHeaderBtn", "ADVANCED")
 
 # ==========================================
 # EXECUTE UI
