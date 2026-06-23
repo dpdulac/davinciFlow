@@ -239,8 +239,9 @@ layout = ui.VGroup([
     ]),
     ui.HGroup([
         ui.CheckBox({"ID": "AllShotsCheck", "Text": "All Shots", "Checked": True, "Weight": 0, "ToolTip": "Uncheck to build only specific shots"}),
+        ui.CheckBox({"ID": "ExcludeCheck", "Text": "Exclude", "Checked": False, "Enabled": False, "Weight": 0, "ToolTip": "If checked, the listed shots will be REMOVED from the timeline"}),
         ui.LineEdit({"ID": "ShotFilterLine", "Text": "", "Enabled": False, "PlaceholderText": "e.g. 10, 30, 60-120", "Weight": 2, "ToolTip": "Comma-separated list of shots or ranges"}),
-        ui.Button({"ID": "ShowShotsBtn", "Text": "Show Shots", "Weight": 0, "ToolTip": "Display all available shots in this sequence"})
+        ui.Button({"ID": "ShowShotsBtn", "Text": "Show Shots", "Enabled": False, "Weight": 0, "ToolTip": "Display all available shots in this sequence"})
     ]),
     ui.VGap(5),
     ui.HGroup([
@@ -333,7 +334,7 @@ if MASTER_TASKS:
 # ==========================================
 PROJECT_CACHE = {}
 
-def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use_audio, max_versions, target_shots=None):
+def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use_audio, max_versions, target_shots=None, exclude_mode=False):
     log(f"Connecting to Flow as '{SCRIPT_NAME}'...")
     try:
         sg = shotgun_api3.Shotgun(FLOW_URL, script_name=SCRIPT_NAME, api_key=SCRIPT_KEY)
@@ -367,7 +368,8 @@ def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use
     if target_shots:
         filtered_shots = []
         for s in shots:
-            if any(ts in s["code"] for ts in target_shots):
+            match = any(ts in s["code"] for ts in target_shots)
+            if (match and not exclude_mode) or (not match and exclude_mode):
                 filtered_shots.append(s)
         shots = filtered_shots
         if not shots:
@@ -558,7 +560,9 @@ def OnBuild(ev):
         
     # Parse target shots if not AllShotsCheck
     target_shots = []
+    exclude_mode = False
     if not items["AllShotsCheck"].Checked:
+        exclude_mode = items["ExcludeCheck"].Checked
         filter_text = items["ShotFilterLine"].Text.strip()
         if filter_text:
             parts = filter_text.split(',')
@@ -587,7 +591,8 @@ def OnBuild(ev):
         use_image_seq=use_img,
         use_audio=use_audio,
         max_versions=max_versions,
-        target_shots=target_shots
+        target_shots=target_shots,
+        exclude_mode=exclude_mode
     )
     if not media_data:
         log("No media data gathered.", level=2)
@@ -850,7 +855,10 @@ def OnCancel(ev):
     dispatcher.ExitLoop()
 
 def OnAllShotsCheck(ev):
-    items["ShotFilterLine"].Enabled = not items["AllShotsCheck"].Checked
+    is_all = items["AllShotsCheck"].Checked
+    items["ShotFilterLine"].Enabled = not is_all
+    items["ExcludeCheck"].Enabled = not is_all
+    items["ShowShotsBtn"].Enabled = not is_all
 
 def OnShowShotsBtnClicked(ev):
     project_name = items["ProjectCombo"].CurrentText
@@ -871,8 +879,11 @@ def OnShowShotsBtnClicked(ev):
         
         # Build secondary window
         layout_shots = ui.VGroup([
-            ui.Tree({"ID": "ShotTree"}),
-            ui.Button({"ID": "CloseShotsBtn", "Text": "Close", "Weight": 0})
+            ui.Tree({"ID": "ShotTree", "Weight": 1}),
+            ui.HGroup({"Weight": 0}, [
+                ui.Button({"ID": "AddFilterBtn", "Text": "Add to Filter"}),
+                ui.Button({"ID": "CloseShotsBtn", "Text": "Close"})
+            ])
         ])
         win_shots = dispatcher.AddWindow({
             "ID": "ShotsWin",
@@ -882,6 +893,10 @@ def OnShowShotsBtnClicked(ev):
         
         w_items = win_shots.GetItems()
         tree = w_items["ShotTree"]
+        
+        # Fusion Tree SelectionMode: 0 = NoSelection, 1 = SingleSelection, 2 = MultiSelection, 3 = ExtendedSelection
+        # It's usually exposed as string properties or integer. Let's just use CheckBoxes for safety, but allow selection.
+        tree.SelectionMode = "ExtendedSelection"
         
         hdr = tree.NewItem()
         hdr.Text[0] = "Shot Code"
@@ -896,8 +911,29 @@ def OnShowShotsBtnClicked(ev):
         def OnShotsClose(ev_close):
             win_shots.Hide()
             
+        def OnAddFilter(ev_add):
+            selected = tree.SelectedItems()
+            codes_to_add = []
+            if selected:
+                items_iter = selected.values() if isinstance(selected, dict) else selected
+                for item in items_iter:
+                    codes_to_add.append(item.Text[0])
+            
+            if codes_to_add:
+                codes_str = ", ".join(codes_to_add)
+                current_text = items["ShotFilterLine"].Text.strip()
+                if current_text:
+                    if not current_text.endswith(","):
+                        current_text += ", "
+                    items["ShotFilterLine"].Text = current_text + codes_str
+                else:
+                    items["ShotFilterLine"].Text = codes_str
+                    
+            win_shots.Hide()
+            
         win_shots.On.CloseShotsBtn.Clicked = OnShotsClose
         win_shots.On.ShotsWin.Close = OnShotsClose
+        win_shots.On.AddFilterBtn.Clicked = OnAddFilter
         
         win_shots.Show()
     except Exception as e:
