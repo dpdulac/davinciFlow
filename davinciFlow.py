@@ -598,7 +598,12 @@ def OnBuild(ev):
                 elif p.isdigit():
                     target_shots.append(p.zfill(4))
                 elif p:
-                    target_shots.append(p)
+                    import re
+                    m = re.match(r'^(\d+)(.*)$', p)
+                    if m:
+                        target_shots.append(m.group(1).zfill(4) + m.group(2))
+                    else:
+                        target_shots.append(p)
                     
     print(f"Building Timeline for: Project={proj_str}, Seq={seq_padded}")
     if target_shots:
