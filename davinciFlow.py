@@ -763,7 +763,8 @@ def OnBuild(ev):
             dvr_project.RefreshLUTList()
             resolve.OpenPage("color")
             for item in appended_items:
-                item.SetLUT(1, EXR_LUT)
+                if ".exr" in item.GetName().lower():
+                    item.SetLUT(1, EXR_LUT)
             resolve.OpenPage("edit")
         except Exception as e:
             print(f"Warning: Failed to apply OCIO LUT: {e}")
