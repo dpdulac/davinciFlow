@@ -22,8 +22,9 @@ This script requires external Python libraries to communicate with ShotGrid, pro
 
 ```bash
 # Core Requirements
-pip install shotgun_api3
-pip install PySide6
+* ShotGrid API (`pip install shotgun_api3`)
+* PyOpenColorIO (`pip install opencolorio`) - For OCIO color management and pipeline LUT processing.
+* PySide6 (`pip install PySide6`)
 
 # Optional / Future Requirements
 pip install opentimelineio
