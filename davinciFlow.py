@@ -186,6 +186,19 @@ def find_clip_in_folder(folder, file_path):
             return clip
     return None
 
+def ensure_luts_installed():
+    import shutil
+    davinci_lut_dir = r"C:\ProgramData\Blackmagic Design\DaVinci Resolve\Support\LUT\davinciFlow"
+    repo_lut_dir = r"T:\davinciFlow_repo\luts"
+    if not os.path.exists(repo_lut_dir): return
+    os.makedirs(davinci_lut_dir, exist_ok=True)
+    for f in os.listdir(repo_lut_dir):
+        if f.endswith(".cube"):
+            src = os.path.join(repo_lut_dir, f)
+            dst = os.path.join(davinci_lut_dir, f)
+            try: shutil.copy2(src, dst)
+            except: pass
+
 def _path_exists_smart(p):
     if "%" in p or "#" in p:
         return os.path.exists(os.path.dirname(p))
@@ -232,27 +245,39 @@ layout = ui.VGroup([
     ui.Button({"ID": "FlowHeaderBtn", "Text": "▼ FLOW", "Alignment": {"AlignLeft": True}, "Weight": 0}),
     ui.VGroup({"ID": "FlowGrp", "Weight": 0}, [
         ui.HGroup([
+            ui.Label({"Text": "Mode:", "ToolTip": "Switch between Sequence Mode and Playlist Mode"}),
+            ui.ComboBox({"ID": "ModeCombo", "Weight": 2})
+        ]),
+        ui.HGroup([
             ui.Label({"Text": "Project:", "ToolTip": "Select the Flow project to load"}),
             ui.ComboBox({"ID": "ProjectCombo", "Weight": 2, "ToolTip": "Select the Flow project to load"})
         ]),
-        ui.HGroup([
+        ui.HGroup({"ID": "SeqGrp"}, [
             ui.Label({"Text": "Sequence:", "Weight": 0}),
             ui.ComboBox({"ID": "SeqCombo", "Weight": 2, "ToolTip": "Select the sequence to build"})
         ]),
+        ui.HGroup({"ID": "PlaylistGrp"}, [
+            ui.Label({"Text": "Playlist:", "Weight": 0}),
+            ui.LineEdit({"ID": "PlaylistSearchLine", "PlaceholderText": "e.g. MAY24", "Weight": 1}),
+            ui.Button({"ID": "FindPlaylistBtn", "Text": "Find", "Weight": 0}),
+            ui.ComboBox({"ID": "PlaylistCombo", "Weight": 2})
+        ])
     ]),
     
     # SHOT
     ui.Button({"ID": "ShotHeaderBtn", "Text": "▼ SHOT", "Alignment": {"AlignLeft": True}, "Weight": 0}),
     ui.VGroup({"ID": "ShotGrp", "Weight": 0}, [
         ui.HGroup([
-            ui.CheckBox({"ID": "AllShotsCheck", "Text": "All Shots", "Checked": True, "Weight": 0, "ToolTip": "Uncheck to build only specific shots"})
-        ]),
-        ui.HGroup([
+            ui.CheckBox({"ID": "AllShotsCheck", "Text": "All Shots", "Checked": True, "Weight": 0, "ToolTip": "Uncheck to build only specific shots"}),
             ui.LineEdit({"ID": "ShotFilterLine", "Text": "", "Enabled": False, "PlaceholderText": "e.g. 10, 30, 60-120", "Weight": 2, "ToolTip": "Comma-separated list of shots or ranges"}),
-            ui.CheckBox({"ID": "ExcludeCheck", "Text": "Exclude", "Checked": False, "Enabled": False, "Weight": 0, "ToolTip": "If checked, the listed shots will be REMOVED from the timeline"})
+            ui.CheckBox({"ID": "ExcludeCheck", "Text": "Exclude", "Checked": False, "Enabled": False, "Weight": 0, "ToolTip": "If checked, the listed shots will be REMOVED from the timeline"}),
+            ui.Button({"ID": "ShowShotsBtn", "Text": "Show Shots", "Enabled": False, "Weight": 0, "ToolTip": "Display all available shots in this sequence"})
         ]),
         ui.HGroup([
-            ui.Button({"ID": "ShowShotsBtn", "Text": "Show Shots", "Enabled": False, "Weight": 0, "ToolTip": "Display all available shots in this sequence"})
+            ui.CheckBox({"ID": "UseHeroCheck", "Text": "Review Shots", "Checked": False, "Weight": 0, "ToolTip": "Turn non-review shots black and white"}),
+            ui.LineEdit({"ID": "HeroFilterLine", "Text": "", "Enabled": False, "PlaceholderText": "e.g. 10, 20pip", "Weight": 2, "ToolTip": "Shots listed here will remain in color. All others will be black and white."}),
+            ui.CheckBox({"ID": "ReverseHeroCheck", "Text": "Reverse", "Checked": False, "Enabled": False, "Weight": 0, "ToolTip": "If checked, listed shots become B&W and others stay colored"}),
+            ui.Button({"ID": "ShowReviewShotsBtn", "Text": "Show Shots", "Enabled": False, "Weight": 0, "ToolTip": "Display all available shots to add to Review"})
         ]),
     ]),
     
@@ -296,7 +321,7 @@ layout = ui.VGroup([
     # TIMELINE
     ui.Button({"ID": "TimelineHeaderBtn", "Text": "▼ TIMELINE", "Alignment": {"AlignLeft": True}, "Weight": 0}),
     ui.VGroup({"ID": "TimelineGrp", "Weight": 0}, [
-        ui.HGroup([
+        ui.HGroup({"ID": "TakeGrp"}, [
             ui.Label({'Text': 'Load Takes:', "ToolTip": "Choose how many historical versions of a shot to stack into a DaVinci Take"}),
             ui.ComboBox({'ID': 'TakeCountCombo', 'Weight': 2, "ToolTip": "Choose how many historical versions of a shot to stack into a DaVinci Take"})
         ]),
@@ -352,6 +377,9 @@ items["TakeCountCombo"].AddItem("Last 3 Versions")
 items["TakeCountCombo"].AddItem("Last 4 Versions")
 items["TakeCountCombo"].AddItem("Last 5 Versions")
 items["TakeCountCombo"].AddItem("All Versions")
+items["ModeCombo"].AddItem("Sequence Mode")
+items["ModeCombo"].AddItem("Playlist Mode")
+items["PlaylistGrp"].Hide()
 
 # Set defaults for task ranges
 if MASTER_TASKS:
@@ -363,7 +391,7 @@ if MASTER_TASKS:
 # ==========================================
 PROJECT_CACHE = {}
 
-def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use_audio, max_versions, target_shots=None, exclude_mode=False):
+def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use_audio, max_versions, target_shots=None, exclude_mode=False, is_playlist_mode=False, playlist_name=None):
     log(f"Connecting to Flow as '{SCRIPT_NAME}'...")
     try:
         sg = shotgun_api3.Shotgun(FLOW_URL, script_name=SCRIPT_NAME, api_key=SCRIPT_KEY)
@@ -380,6 +408,74 @@ def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use
     if not project:
         log(f"Project '{project_name}' not found.")
         return None
+
+    if is_playlist_mode:
+        log(f"\nQuerying Playlist {playlist_name}...")
+        pl = retry_sg(lambda: sg.find_one("Playlist", [["project", "is", project], ["code", "is", playlist_name]], ["versions"]))
+        if not pl or not pl.get("versions"):
+            log(f"Playlist {playlist_name} not found or has no versions.")
+            return None
+            
+        v_ids = [v["id"] for v in pl["versions"]]
+        versions = retry_sg(lambda: sg.find("Version", [["id", "in", v_ids]], ["code", "sg_path_to_movie", "sg_path_to_frames", "sg_uploaded_movie_mp4", "created_at", "entity"]))
+        
+        # We need shot info (cut in/out) for these versions
+        shot_ids = list(set([v["entity"]["id"] for v in versions if v.get("entity") and v["entity"]["type"] == "Shot"]))
+        if not shot_ids:
+            log("No shots linked to the versions in this playlist.")
+            return None
+            
+        shots = retry_sg(lambda: sg.find("Shot", [["id", "in", shot_ids]], ["id", "code", "sg_cut_in", "sg_cut_out", "sg_head_in"]))
+        
+        # Apply target_shots filter
+        if target_shots:
+            filtered_shots = []
+            for s in shots:
+                match = any(ts in s["code"] for ts in target_shots)
+                if (match and not exclude_mode) or (not match and exclude_mode):
+                    filtered_shots.append(s)
+            shots = filtered_shots
+            if not shots:
+                log("No shots matched the filter criteria.")
+                return None
+                
+        shot_dict = {s["id"]: s for s in shots}
+        final_data = {}
+        
+        for v in versions:
+            ent = v.get("entity")
+            if not ent or ent["id"] not in shot_dict: continue
+            
+            shot_data = shot_dict[ent["id"]]
+            shot_code = shot_data["code"]
+            
+            p_movie = resolve_path(v.get('sg_path_to_movie'))
+            p_frames = resolve_path(v.get('sg_path_to_frames'))
+            mp4_url = v.get('sg_uploaded_movie_mp4')
+            
+            target_path = p_frames if (use_image_seq and p_frames) else p_movie
+            if not target_path and mp4_url:
+                target_path = mp4_url
+                is_web_proxy = True
+            elif not target_path:
+                target_path = get_missing_media_path()
+                is_web_proxy = False
+            else:
+                is_web_proxy = False
+                
+            final_data[shot_code] = {
+                'shot_id': shot_data['id'],
+                'shot_code': shot_code,
+                'task': 'playlist',
+                'path': target_path,
+                'cut_in': shot_data.get('sg_cut_in'),
+                'cut_out': shot_data.get('sg_cut_out'),
+                'head_in': shot_data.get('sg_head_in'),
+                'is_web_proxy': is_web_proxy,
+                'takes': []  # No historical takes in playlist mode
+            }
+            
+        return final_data
 
     # Fetch all shots in sequence to get timing and ID
     log(f"\nQuerying Shots for Sequence {sequence_name}...")
@@ -549,6 +645,53 @@ items["TaskPresetCombo"].Enabled = False
 items["HighestTaskCombo"].Enabled = True
 items["LowestTaskCombo"].Enabled = True
 
+def update_show_shots_btn():
+    pass # Replaced by specific handlers
+
+def OnUseHeroCheck(ev):
+    checked = items["UseHeroCheck"].Checked
+    items["HeroFilterLine"].Enabled = checked
+    items["ReverseHeroCheck"].Enabled = checked
+    items["ShowReviewShotsBtn"].Enabled = checked
+
+def OnModeChange(ev):
+    mode = items["ModeCombo"].CurrentText
+    if mode == "Playlist Mode":
+        items["SeqGrp"].Hide()
+        items["TaskGrp"].Hide()
+        items["TakeGrp"].Hide()
+        items["PlaylistGrp"].Show()
+    else:
+        items["SeqGrp"].Show()
+        items["TaskGrp"].Show()
+        items["TakeGrp"].Show()
+        items["PlaylistGrp"].Hide()
+
+def OnFindPlaylistBtn(ev):
+    project_name = items["ProjectCombo"].CurrentText
+    search_text = items["PlaylistSearchLine"].Text.strip()
+    if not project_name or not search_text: return
+    
+    items["FindPlaylistBtn"].Text = "Wait..."
+    try:
+        sg = shotgun_api3.Shotgun(FLOW_URL, script_name=SCRIPT_NAME, api_key=SCRIPT_KEY)
+        proj = sg.find_one("Project", [["name", "is", project_name]], ["id"])
+        if not proj: raise Exception("Project not found")
+        
+        # Search playlists containing the text in code
+        playlists = sg.find("Playlist", [["project", "is", proj], ["code", "contains", search_text]], ["code"], limit=50)
+        
+        items["PlaylistCombo"].Clear()
+        if playlists:
+            for pl in playlists:
+                items["PlaylistCombo"].AddItem(pl["code"])
+        else:
+            items["PlaylistCombo"].AddItem("No match found")
+    except Exception as e:
+        print(f"Error finding playlists: {e}")
+    finally:
+        items["FindPlaylistBtn"].Text = "Find"
+
 def OnPresetCheck(ev):
     checked = items["UsePresetCheck"].Checked
     items["TaskPresetCombo"].Enabled = checked
@@ -559,6 +702,8 @@ def OnBuild(ev):
     proj_str = items["ProjectCombo"].CurrentText
     seq_str = items["SeqCombo"].CurrentText.strip()
     seq_padded = seq_str.zfill(4)
+    is_playlist_mode = (items["ModeCombo"].CurrentText == "Playlist Mode")
+    playlist_name = items["PlaylistCombo"].CurrentText
     highest_idx = int(items["HighestTaskCombo"].CurrentIndex)
     lowest_idx = items["LowestTaskCombo"].CurrentIndex
     use_img = items["ImageSeqCheck"].Checked
@@ -590,6 +735,26 @@ def OnBuild(ev):
     # Parse target shots if not AllShotsCheck
     target_shots = []
     exclude_mode = False
+    hero_shots = []
+    hero_mode_active = items["UseHeroCheck"].Checked
+    reverse_hero = items["ReverseHeroCheck"].Checked
+    if hero_mode_active:
+        hero_text = items["HeroFilterLine"].Text.strip()
+        if hero_text:
+            for p in hero_text.split(','):
+                p = p.strip()
+                if '-' in p:
+                    subparts = p.split('-')
+                    if len(subparts) == 2 and subparts[0].isdigit() and subparts[1].isdigit():
+                        for i in range(int(subparts[0]), int(subparts[1]) + 1):
+                            hero_shots.append(str(i).zfill(4))
+                elif p.isdigit(): hero_shots.append(p.zfill(4))
+                elif p:
+                    import re
+                    m = re.match(r'^(\d+)(.*)$', p)
+                    if m: hero_shots.append(m.group(1).zfill(4) + m.group(2))
+                    else: hero_shots.append(p)
+
     if not items["AllShotsCheck"].Checked:
         exclude_mode = items["ExcludeCheck"].Checked
         filter_text = items["ShotFilterLine"].Text.strip()
@@ -628,13 +793,16 @@ def OnBuild(ev):
         use_audio=use_audio,
         max_versions=max_versions,
         target_shots=target_shots,
-        exclude_mode=exclude_mode
+        exclude_mode=exclude_mode,
+        is_playlist_mode=is_playlist_mode,
+        playlist_name=playlist_name
     )
     if not media_data:
         log("No media data gathered.", level=2)
         return
         
-    seq_bin = get_or_create_bin(seq_padded)
+    base_folder_name = playlist_name if is_playlist_mode else seq_padded
+    seq_bin = get_or_create_bin(base_folder_name)
     media_bin = get_or_create_sub_bin(seq_bin, "media")
     movies_bin = get_or_create_sub_bin(media_bin, "movies")
     audio_bin = get_or_create_sub_bin(media_bin, "audio")
@@ -721,8 +889,16 @@ def OnBuild(ev):
                 existing_clip = imported[0]
                 
         if existing_clip:
+            is_hero = True
+            if hero_mode_active:
+                if data['shot_code'] in hero_shots:
+                    is_hero = not reverse_hero
+                else:
+                    is_hero = reverse_hero
+                    
             clip_info = {
-                "mediaPoolItem": existing_clip
+                "mediaPoolItem": existing_clip,
+                "is_hero": is_hero
             }
             if use_audio:
                 clip_info["mediaType"] = 1 # Strip the embedded video audio
@@ -812,18 +988,25 @@ def OnBuild(ev):
     media_pool.SetCurrentFolder(timeline_bin)
     
     target_timeline = None
-    if use_latest_timeline:
-        matched_timelines = []
-        for i in range(1, dvr_project.GetTimelineCount() + 1):
-            tl = dvr_project.GetTimelineByIndex(i)
+    tl_prefix = f"{playlist_name}_v" if is_playlist_mode else seq_padded
+    
+    matched_timelines = []
+    for i in range(1, dvr_project.GetTimelineCount() + 1):
+        tl = dvr_project.GetTimelineByIndex(i)
+        if is_playlist_mode:
+            if tl.GetName().startswith(tl_prefix):
+                matched_timelines.append(tl)
+        else:
             if tl.GetName().startswith(seq_padded):
                 matched_timelines.append(tl)
                 
-        if matched_timelines:
-            matched_timelines.sort(key=lambda t: t.GetName())
-            target_timeline = matched_timelines[-1]
+    if matched_timelines:
+        matched_timelines.sort(key=lambda t: t.GetName())
+        highest_tl = matched_timelines[-1]
+        
+        if use_latest_timeline:
+            target_timeline = highest_tl
             print(f"Found latest timeline: {target_timeline.GetName()}. Clearing existing clips...")
-            
             dvr_project.SetCurrentTimeline(target_timeline)
             
             for t_type in ['video', 'audio', 'subtitle']:
@@ -832,10 +1015,24 @@ def OnBuild(ev):
                     t_items = target_timeline.GetItemListInTrack(t_type, t_idx)
                     if t_items:
                         target_timeline.DeleteClips(t_items)
-                        
+        else:
+            # Not using latest -> Increment version
+            if is_playlist_mode:
+                import re
+                m = re.search(r'_v(\d{3})$', highest_tl.GetName())
+                next_v = int(m.group(1)) + 1 if m else len(matched_timelines) + 1
+                tl_name = f"{playlist_name}_v{str(next_v).zfill(3)}"
+            else:
+                date_str = datetime.datetime.now().strftime("%Y_%m_%d")
+                tl_name = f"{seq_padded}_{date_str}_{len(matched_timelines)+1}"
+                
     if not target_timeline:
-        date_str = datetime.datetime.now().strftime("%Y_%m_%d")
-        tl_name = f"{seq_padded}_{date_str}"
+        if not 'tl_name' in locals():
+            if is_playlist_mode:
+                tl_name = f"{playlist_name}_v001"
+            else:
+                date_str = datetime.datetime.now().strftime("%Y_%m_%d")
+                tl_name = f"{seq_padded}_{date_str}"
         print(f"Creating New Timeline: {tl_name} in 'timeline' bin.")
         target_timeline = media_pool.CreateEmptyTimeline(tl_name)
     
@@ -845,17 +1042,39 @@ def OnBuild(ev):
     print(f"Appending {len(video_clip_infos)} video clips to timeline...")
     appended_items = media_pool.AppendToTimeline(video_clip_infos)
     
-    if use_img and use_lut and 'EXR_LUT' in globals() and EXR_LUT and appended_items:
-        print(f"Applying OCIO Editorial LUT '{EXR_LUT}' to EXR clips...")
+    if appended_items:
+        ensure_luts_installed()
+        print("Applying LUTs to timeline clips (Hero/Non-Hero)...")
         try:
             dvr_project.RefreshLUTList()
             resolve.OpenPage("color")
-            for item in appended_items:
-                if ".exr" in item.GetName().lower():
-                    item.SetLUT(1, EXR_LUT)
+            exr_lut_exists = ('EXR_LUT' in globals() and EXR_LUT)
+            for idx, item in enumerate(appended_items):
+                if idx >= len(video_clip_infos): break
+                info = video_clip_infos[idx]
+                is_hero = info.get("is_hero", True)
+                is_exr = ".exr" in item.GetName().lower()
+                
+                lut_to_apply = None
+                if is_exr:
+                    if is_hero and use_lut and exr_lut_exists:
+                        lut_to_apply = EXR_LUT
+                    elif not is_hero:
+                        if exr_lut_exists:
+                            basename = os.path.basename(EXR_LUT)
+                            name, ext = os.path.splitext(basename)
+                            lut_to_apply = f"davinciFlow/{name}_bw{ext}"
+                        else:
+                            lut_to_apply = "davinciFlow/proxy_bw.cube"
+                else:
+                    if not is_hero:
+                        lut_to_apply = "davinciFlow/proxy_bw.cube"
+                
+                if lut_to_apply:
+                    item.SetLUT(1, lut_to_apply)
             resolve.OpenPage("edit")
         except Exception as e:
-            print(f"Warning: Failed to apply OCIO LUT: {e}")
+            print(f"Warning: Failed to apply LUTs: {e}")
             
     if appended_items and pending_takes_to_attach:
         print("Attaching previous versions as Takes...")
@@ -891,94 +1110,112 @@ def OnCancel(ev):
     dispatcher.ExitLoop()
 
 def OnAllShotsCheck(ev):
-    is_all = items["AllShotsCheck"].Checked
-    items["ShotFilterLine"].Enabled = not is_all
-    items["ExcludeCheck"].Enabled = not is_all
-    items["ShowShotsBtn"].Enabled = not is_all
+    checked = items["AllShotsCheck"].Checked
+    items["ShotFilterLine"].Enabled = not checked
+    items["ExcludeCheck"].Enabled = not checked
+    items["ShowShotsBtn"].Enabled = not checked
 
-def OnShowShotsBtnClicked(ev):
-    project_name = items["ProjectCombo"].CurrentText
-    seq_name = items["SeqCombo"].CurrentText
-    if not project_name or not seq_name:
-        return
+def create_show_shots_handler(target_line_id):
+    def handler(ev):
+        project_name = items["ProjectCombo"].CurrentText
+        is_playlist_mode = (items["ModeCombo"].CurrentText == "Playlist Mode")
         
-    items["ShowShotsBtn"].Text = "Loading..."
-    try:
-        sg = shotgun_api3.Shotgun(FLOW_URL, script_name=SCRIPT_NAME, api_key=SCRIPT_KEY)
-        proj = sg.find_one("Project", [["name", "is", project_name]], ["id"])
-        if not proj: raise Exception("Project not found")
-        seq = sg.find_one("Sequence", [["code", "is", seq_name], ["project", "is", proj]], ["id"])
-        if not seq: raise Exception("Sequence not found")
-        
-        shots = sg.find("Shot", [["sg_sequence", "is", seq]], ["code"])
-        codes = sorted([s["code"] for s in shots])
-        
-        # Build secondary window
-        layout_shots = ui.VGroup([
-            ui.Tree({"ID": "ShotTree", "Weight": 1}),
-            ui.HGroup({"Weight": 0}, [
-                ui.Button({"ID": "AddFilterBtn", "Text": "Add to Filter"}),
-                ui.Button({"ID": "ClearFilterBtn", "Text": "Clear Filter"}),
-                ui.Button({"ID": "CloseShotsBtn", "Text": "Close"})
+        if not is_playlist_mode:
+            seq_name = items["SeqCombo"].CurrentText
+            if not project_name or not seq_name: return
+        else:
+            playlist_name = items["PlaylistCombo"].CurrentText
+            if not project_name or not playlist_name: return
+            
+        try:
+            sg = shotgun_api3.Shotgun(FLOW_URL, script_name=SCRIPT_NAME, api_key=SCRIPT_KEY)
+            proj = sg.find_one("Project", [["name", "is", project_name]], ["id"])
+            if not proj: raise Exception("Project not found")
+            
+            if not is_playlist_mode:
+                seq = sg.find_one("Sequence", [["code", "is", seq_name], ["project", "is", proj]], ["id"])
+                if not seq: raise Exception("Sequence not found")
+                shots = sg.find("Shot", [["sg_sequence", "is", seq]], ["code"])
+                codes = sorted([s["code"] for s in shots])
+                win_title = f"Available Shots: {seq_name}"
+            else:
+                pl = sg.find_one("Playlist", [["code", "is", playlist_name], ["project", "is", proj]], ["versions"])
+                if not pl or not pl.get("versions"): raise Exception("Playlist not found or empty")
+                v_ids = [v["id"] for v in pl["versions"]]
+                versions = sg.find("Version", [["id", "in", v_ids]], ["entity"])
+                shot_codes = set()
+                for v in versions:
+                    ent = v.get("entity")
+                    if ent and ent["type"] == "Shot":
+                        shot_codes.add(ent["name"])
+                codes = sorted(list(shot_codes))
+                win_title = f"Available Shots: {playlist_name}"
+            
+            layout_shots = ui.VGroup([
+                ui.Tree({"ID": "ShotTree", "Weight": 1}),
+                ui.HGroup({"Weight": 0}, [
+                    ui.Button({"ID": "AddBtn", "Text": "Add Shots"}),
+                    ui.Button({"ID": "ClearBtn", "Text": "Clear"}),
+                    ui.Label({"Weight": 1}),
+                    ui.Button({"ID": "CloseShotsBtn", "Text": "Close", "Weight": 0})
+                ])
             ])
-        ])
-        win_shots = dispatcher.AddWindow({
-            "ID": "ShotsWin",
-            "Geometry": [200, 200, 300, 400],
-            "WindowTitle": f"Available Shots: {seq_name}"
-        }, layout_shots)
-        
-        w_items = win_shots.GetItems()
-        tree = w_items["ShotTree"]
-        
-        # Fusion Tree SelectionMode: 0 = NoSelection, 1 = SingleSelection, 2 = MultiSelection, 3 = ExtendedSelection
-        # It's usually exposed as string properties or integer. Let's just use CheckBoxes for safety, but allow selection.
-        tree.SelectionMode = "ExtendedSelection"
-        
-        hdr = tree.NewItem()
-        hdr.Text[0] = "Shot Code"
-        tree.SetHeaderItem(hdr)
-        tree.ColumnCount = 1
-        
-        for code in codes:
-            it = tree.NewItem()
-            it.Text[0] = code
-            tree.AddTopLevelItem(it)
             
-        def OnShotsClose(ev_close):
-            win_shots.Hide()
+            win_shots = dispatcher.AddWindow({
+                "ID": "ShotsWin",
+                "Geometry": [200, 200, 300, 400],
+                "WindowTitle": win_title
+            }, layout_shots)
             
-        def OnAddFilter(ev_add):
-            selected = tree.SelectedItems()
-            codes_to_add = []
-            if selected:
-                items_iter = selected.values() if isinstance(selected, dict) else selected
-                for item in items_iter:
-                    codes_to_add.append(item.Text[0])
+            w_items = win_shots.GetItems()
+            tree = w_items["ShotTree"]
+            tree.SelectionMode = "ExtendedSelection"
             
-            if codes_to_add:
-                codes_str = ", ".join(codes_to_add)
-                current_text = items["ShotFilterLine"].Text.strip()
-                if current_text:
-                    if not current_text.endswith(","):
-                        current_text += ", "
-                    items["ShotFilterLine"].Text = current_text + codes_str
-                else:
-                    items["ShotFilterLine"].Text = codes_str
-                    
-        def OnClearFilter(ev_clear):
-            items["ShotFilterLine"].Text = ""
+            hdr = tree.NewItem()
+            hdr.Text[0] = "Shot Code"
+            tree.SetHeaderItem(hdr)
+            tree.ColumnCount = 1
             
-        win_shots.On.CloseShotsBtn.Clicked = OnShotsClose
-        win_shots.On.ShotsWin.Close = OnShotsClose
-        win_shots.On.AddFilterBtn.Clicked = OnAddFilter
-        win_shots.On.ClearFilterBtn.Clicked = OnClearFilter
-        
-        win_shots.Show()
-    except Exception as e:
-        print(f"Error fetching shots: {e}")
-    finally:
-        items["ShowShotsBtn"].Text = "Show Shots"
+            for code in codes:
+                it = tree.NewItem()
+                it.Text[0] = code
+                tree.AddTopLevelItem(it)
+                
+            def OnShotsClose(ev_close):
+                win_shots.Hide()
+                
+            def OnAdd(ev_add):
+                selected = tree.SelectedItems()
+                codes_to_add = []
+                if selected:
+                    items_iter = selected.values() if isinstance(selected, dict) else selected
+                    for item in items_iter:
+                        codes_to_add.append(item.Text[0])
+                
+                if codes_to_add:
+                    codes_str = ", ".join(codes_to_add)
+                    current_text = items[target_line_id].Text.strip()
+                    if current_text:
+                        if not current_text.endswith(","):
+                            current_text += ", "
+                        items[target_line_id].Text = current_text + codes_str
+                    else:
+                        items[target_line_id].Text = codes_str
+                        
+            def OnClear(ev_clear):
+                items[target_line_id].Text = ""
+                
+            win_shots.On.CloseShotsBtn.Clicked = OnShotsClose
+            win_shots.On.ShotsWin.Close = OnShotsClose
+            win_shots.On.AddBtn.Clicked = OnAdd
+            win_shots.On.ClearBtn.Clicked = OnClear
+            
+            win_shots.Show()
+        except Exception as e:
+            print(f"Error fetching shots: {e}")
+
+    return handler
+
 
 UI_STATE = {
     "FlowGrp": True,
@@ -986,7 +1223,7 @@ UI_STATE = {
     "FileGrp": True,
     "TaskGrp": True,
     "TimelineGrp": True,
-    "AdvancedGrp": True
+    "AdvancedGrp": False
 }
 
 def create_toggle_handler(group_id, btn_id, title):
@@ -1021,15 +1258,23 @@ win.On.CleanCacheBtn.Clicked = OnCleanCache
 win.On.BuildBtn.Clicked = OnBuild
 win.On.CancelBtn.Clicked = OnCancel
 win.On.FlowDialog.Close = OnCancel
+win.On.UseHeroCheck.Clicked = OnUseHeroCheck
 win.On.UsePresetCheck.Clicked = OnPresetCheck
+win.On.ModeCombo.CurrentIndexChanged = OnModeChange
+win.On.FindPlaylistBtn.Clicked = OnFindPlaylistBtn
 win.On.AllShotsCheck.Clicked = OnAllShotsCheck
-win.On.ShowShotsBtn.Clicked = OnShowShotsBtnClicked
+win.On.ShowShotsBtn.Clicked = create_show_shots_handler("ShotFilterLine")
+win.On.ShowReviewShotsBtn.Clicked = create_show_shots_handler("HeroFilterLine")
 win.On.FlowHeaderBtn.Clicked = create_toggle_handler("FlowGrp", "FlowHeaderBtn", "FLOW")
 win.On.ShotHeaderBtn.Clicked = create_toggle_handler("ShotGrp", "ShotHeaderBtn", "SHOT")
 win.On.FileHeaderBtn.Clicked = create_toggle_handler("FileGrp", "FileHeaderBtn", "FILE")
 win.On.TaskHeaderBtn.Clicked = create_toggle_handler("TaskGrp", "TaskHeaderBtn", "TASKS")
 win.On.TimelineHeaderBtn.Clicked = create_toggle_handler("TimelineGrp", "TimelineHeaderBtn", "TIMELINE")
 win.On.AdvancedHeaderBtn.Clicked = create_toggle_handler("AdvancedGrp", "AdvancedHeaderBtn", "ADVANCED")
+
+# Initialize AdvancedGrp state to hidden
+items["AdvancedGrp"].Hide()
+items["AdvancedHeaderBtn"].Text = "▶ ADVANCED"
 
 # ==========================================
 # EXECUTE UI

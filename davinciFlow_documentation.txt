@@ -1,15 +1,15 @@
 # DaVinci Flow Pipeline Script - AI Recreation Prompt
 
-**Purpose:** This document is designed to act as a highly detailed prompt. If you feed this text to an LLM, it should be able to perfectly recreate the `davinciFlow.py` script from scratch.
+**Purpose:** This document is designed to act as a highly detailed architectural prompt. If you feed this text to an LLM, it should be able to perfectly recreate the entire `davinciFlow.py` plugin ecosystem from scratch.
 
 ---
 
 ## CONTEXT & GOAL
-Write a Python 3 script named `davinciFlow.py` that bridges ShotGrid (Flow) and DaVinci Resolve. The script must query ShotGrid for the latest (or historical) media files for a specific sequence of shots, download missing proxies, and assemble them chronologically into a DaVinci Resolve timeline using the `DaVinciResolveScript` and `fusion.UIManager` APIs.
+Write a Python 3 script named `davinciFlow.py` that bridges ShotGrid (Flow) and DaVinci Resolve. The script must query ShotGrid for the latest (or historical) media files for a specific sequence of shots or a direct Playlist, download missing proxies, and assemble them chronologically into a DaVinci Resolve timeline using the `DaVinciResolveScript` and `fusion.UIManager` APIs.
 
 ## 1. CONFIGURATION, AUTHENTICATION & DEPENDENCIES
 The script must authenticate with ShotGrid via `shotgun_api3`.
-It requires `PyOpenColorIO` (opencolorio) for LUT application on .exr files.
+It requires `PyOpenColorIO` (opencolorio) for LUT mathematical processing and generation.
 It should fall back to default hardcoded credentials, but primarily attempt to load them from `davinciFlow_config.json`:
 - `flow_url` (default: "https://mikrosanim.priv.shotgunstudio.com/")
 - `script_name` (default: "resolveTest")
@@ -21,95 +21,91 @@ It should fall back to default hardcoded credentials, but primarily attempt to l
 - `userpref_dir` (default: `os.path.expanduser("~") + "/.flowDavinciData"`)
 - `exr_lut` (default: `""`, e.g., `"Mikros/TMNT2_acescg_to_vd16.cube"`)
 
-It must also load a `userpref.json` (if it exists) which contains custom task arrays:
-```json
-{"presets": {"Compositor Default": ["compo_comp", "light_precomp", "anim_main", "editing_edt"]}}
-```
+It must also load a `userpref.json` (if it exists) which contains custom task arrays.
 
 ## 2. UI DESIGN (Fusion UIManager)
 Build a GUI window (Geometry: `[400, 400, 550, 450]`) using `fusion.UIManager`.
-Organize it into three distinct visual sections using centered Labels (e.g. `--- FLOW ---`).
+Organize it into distinct expandable/collapsible visual sections (`ui.VGroup`) toggled by Header Buttons (`▶ FLOW`, `▶ SHOT`, etc). Use a `create_toggle_handler` function to hide/show the VGroups.
+The `AdvancedGrp` must be forced to `.Hide()` state upon initialization!
 
 **Section: FLOW**
+- `ModeCombo`: Dropdown containing "Sequence Mode" and "Playlist Mode".
 - `ProjectCombo`: Dropdown of projects from config.
-- `SeqCombo`: Dropdown of sequence numbers (e.g. "0575") fetched live from SG upon launch.
+- `SeqGrp`: An HGroup containing `SeqCombo` (Sequence numbers).
+- `PlaylistGrp`: An HGroup (hidden by default) containing a `PlaylistSearchLine`, a `FindPlaylistBtn`, and a `PlaylistCombo`. 
+  - *Logic*: Clicking `FindPlaylistBtn` queries Flow for playlists containing the typed string and populates `PlaylistCombo`.
+
 **Section: SHOT**
-- `AllShotsCheck`: Checkbox to build all sequence shots.
-- `ShotFilterLine`: LineEdit (enabled if AllShotsCheck is false) to parse ranges like "10, 30, 60-120".
-- `ExcludeCheck`: Checkbox to invert the filter (exclude listed shots).
-- `ShowShotsBtn`: Button that launches a secondary window containing a `ui.Tree` of available shots with multi-selection support, and an "Add to Filter" button to populate the ShotFilterLine.
+This section applies globally to both modes:
+- **Sequence Filter Row:**
+  - `AllShotsCheck`: Checkbox to build all shots.
+  - `ShotFilterLine`: LineEdit (enabled if AllShotsCheck is false) to parse ranges like "10, 30, 60-120".
+  - `ExcludeCheck`: Checkbox to invert the filter.
+  - `ShowShotsBtn`: Button that launches a secondary window to select shots.
+- **Review Color Row:**
+  - `UseHeroCheck`: Checkbox labeled "Review Shots" to enable B&W filtering.
+  - `HeroFilterLine`: LineEdit for Review shots.
+  - `ReverseHeroCheck`: Checkbox to invert the B&W logic.
+  - `ShowReviewShotsBtn`: Button labeled "Show Shots" that launches a secondary window.
 
-**Section: FILE**
-- `ImageSeqCheck`: Checkbox (Use Image Sequences instead of movies).
-- `ApplyLutCheck`: Checkbox to apply the OCIO LUT to `.exr` sequences.
-- `UseAudio`: Checkbox (Import .wav files from Flow).
+*(Note: Use a unified closure `create_show_shots_handler(target_line_id)`. If in Sequence Mode, it queries Flow for shots in the sequence. If in Playlist Mode, it queries Flow for the selected Playlist, fetches its `Versions`, extracts the parent `Shot` entities, and lists precisely those explicit shots in the `ui.Tree`).*
 
-**Section: TASKS**
+**Section: TASKS (`TaskGrp`)**
 - `UsePresetCheck`: Checkbox to override High/Low drop-downs.
 - `HighestTaskCombo` & `LowestTaskCombo`: Dropdowns side-by-side in an HGroup, populated from the master tasks list.
 - `TaskPresetCombo`: Dropdown populated from `userpref.json` keys.
-*(Dynamic UI Rule: If `UsePresetCheck` is checked, disable Highest/Lowest combos and enable TaskPresetCombo. Vice versa if unchecked. Attach this to a UI Clicked event).*
 
-**Section: TIMELINE**
-- `TakeCountCombo`: Dropdown ("None (Latest Only)", "Last 2 Versions", "Last 3 Versions", "Last 4 Versions", "Last 5 Versions", "All Versions").
-- `UseLatestTimeline`: Checkbox to update the latest matching timeline (clears clips first).
+**Section: TIMELINE (`TakeGrp`)**
+- `TakeCountCombo`: Dropdown ("None (Latest Only)", "Last 2 Versions", "All Versions").
+- `UseLatestTimeline`: Checkbox to update the latest matching timeline.
 
 **Footer**
 - `CancelBtn` & `BuildBtn` (Build Sequence).
 
-## 3. PATH RESOLUTION & PROXIES
+*(Dynamic UI Rule: When `ModeCombo` changes to "Playlist Mode", the script instantly calls `.Hide()` on `SeqGrp`, `TaskGrp`, and `TakeGrp`, and calls `.Show()` on `PlaylistGrp`. Vice versa for Sequence Mode).*
+
+## 3. PATH RESOLUTION, PROXIES & LUTS
 Create a `resolve_path(raw_path)` function:
 - Replaces `/` with `\`.
 - If path starts with `\s\prodanim\`, strip it and try checking the `W:\` drive, then fallback to `V:\`.
 - If it starts with `V:\` but doesn't exist, smartly swap to `W:\` and check again (and vice versa).
 
-Create a `get_missing_media_path()` function:
-- Downloads a red "NO CLIP" placeholder image from `https://dummyimage.com/1920x1080/ff0000/ffffff.jpg?text=NO+CLIP` to the proxy directory using `urllib.request`.
+Create an `ensure_luts_installed()` function:
+- Checks `T:\davinciFlow_repo\luts`. Uses `shutil.copy2` to copy `.cube` files to DaVinci's system LUT folder at `C:\ProgramData\Blackmagic Design\DaVinci Resolve\Support\LUT\davinciFlow`.
 
 ## 4. SHOTGRID QUERY LOGIC (`fetch_flow_data`)
-When the user clicks "Build Sequence", query SG:
-1. Find the Project ID.
-2. Find all `Shot` entities where `sg_sequence` matches `SeqCombo`. Retrieve `code`, `sg_cut_in`, `sg_cut_out`, `sg_head_in`.
-3. If `UseAudio` is checked, find `PublishedFile` entities of type `EditingSound` or `Sound` linked to the sequence. Resolve their paths.
-4. Determine the `valid_tasks` array: If `UsePresetCheck` is checked, use the array from `userpref.json`. Otherwise, slice the `tasks` array from config using the Highest to Lowest indices.
-5. Query `Version` entities for all found shots filtered by `valid_tasks`. Get `sg_path_to_movie`, `sg_path_to_frames`, `created_at`, `sg_uploaded_movie_mp4`.
+When "Build Sequence" is clicked, check the active Mode:
 
-**Version Filtering & Grouping:**
-- For each shot, loop through `valid_tasks` in exact order. Stop at the first task that returns media.
-- For that task, group versions by their base name (stripping out `-mjpeg`, `-dnxhd`, `.mov`).
-- If duplicates exist for a base version, prioritize `dnxhd` (score=2) over `mjpeg` (score=1).
-- Sort the unique versions by `created_at` (Newest first).
-- Slice the array based on the `TakeCountCombo` limit (e.g. Last 2 Versions = slice `[:2]`).
-- The newest version `[0]` is the base path. All others `[1:]` are stored in a `takes` list for that shot.
-- If a version has no local path but has a web url, flag `is_web_proxy = True`.
+**If Sequence Mode:**
+1. Find all `Shot` entities linked to `SeqCombo`.
+2. Filter shots based on `ShotFilterLine` and `ExcludeCheck` using Regex to 4-pad leading digits (`re.match(r'^(\d+)(.*)$', p)`).
+3. Query `Version` entities for all shots, filtered by `valid_tasks`.
+4. Group versions by base name, prioritize `dnxhd` over `mjpeg`, sort by `created_at`.
+5. Apply the `TakeCountCombo` to keep historical takes.
+
+**If Playlist Mode:**
+1. Bypass the Task hierarchy entirely.
+2. Query Flow for the exact `Playlist` named in `PlaylistCombo`.
+3. Extract the `versions` array from the playlist entity.
+4. Fetch those exact versions by ID.
+5. Extract the parent `Shot` entities from those versions to get timeline cutting (`sg_cut_in`, `sg_cut_out`).
+6. Apply `ShotFilterLine` logic (e.g. if the user only wants shot 0050 out of the 100-shot playlist).
+7. Force the version dictionary to only have one element (no historical takes).
 
 ## 5. MEDIA IMPORT & DAVINCI ASSEMBLY
-1. Check if the timeline exists. If `UseLatestTimeline` is checked, clear all clips via `target_timeline.DeleteClips()`. Otherwise, create a new timeline `SeqNumber_YYYY_MM_DD`.
-2. Sort the processed shots alphabetically by `shot_code`.
-3. Pre-flight phase: Gather all required web proxy downloads (base media or takes) where `is_web_proxy == True` and the local file doesn't exist yet.
-4. Execute downloads in parallel using `concurrent.futures.ThreadPoolExecutor(max_workers=10)` to accelerate batch fetching.
-5. Loop through shots to assemble:
-   - Import base media to `movies` bin in the Media Pool. Import take media to the same bin.
-   - Construct `clip_info` dictionary for `AppendToTimeline()`. Calculate duration: `endFrame = sg_cut_out - sg_cut_in`. (If missing placeholder, default to 48 frames or the cut duration).
-   - Track mapped Takes: Store the target `video_index` (len of current video clips list) alongside the imported take `MediaPoolItem`s.
-   - Import Audio to `audio` bin if enabled. Map its `trackIndex` to 1.
-4. Call `appended_items = media_pool.AppendToTimeline(video_clip_infos)`.
-5. Iterate through `appended_items`. If an item's index matches our tracked Takes, call `timeline_item.AddTake(take_media_pool_item, startFrame=0, endFrame=duration)`.
-6. Append Audio infos to timeline using `recordFrame = video_item.GetStart()` to perfectly sync.
+1. Pre-flight phase: Gather all web proxy downloads where local file doesn't exist. Execute in parallel using `concurrent.futures.ThreadPoolExecutor(max_workers=10)`.
+2. **Timeline Logic**:
+   - In Sequence Mode: Base name is `Seq_YYYY_MM_DD`. If `UseLatestTimeline` is false, it appends a suffix index. If true, it clears the latest existing one.
+   - In Playlist Mode: Base name is `{PlaylistName}_vXXX`. If `UseLatestTimeline` is false, it parses the timeline names via regex (`_v(\d{3})$`) to mathematically increment the padding (e.g. `_v001` becomes `_v002`). If true, it clears the clips in the highest version found.
+3. Import media and takes to Media Pool.
+4. Construct `clip_info` dicts (`{"mediaPoolItem": item, "is_hero": bool}`) for `AppendToTimeline()`. Calculate duration: `endFrame = sg_cut_out - sg_cut_in`.
+5. **LUT Application:** Iterate through `appended_items`.
+   - If EXR and is_hero: Apply standard `exr_lut`.
+   - If EXR and NOT is_hero: Apply generated B&W LUT (`TMNT2_acescg_to_vd16_bw.cube`).
+   - If Proxy and NOT is_hero: Apply generic `proxy_bw.cube`.
+   *(LUTs are applied via `timeline_item.SetLUT(1, lut_path)`).*
 
-## 6. EXECUTION
-Show the window and start the Fusion `dispatcher.RunLoop()`. Hide window on completion or cancel.
-
-## 7. COMPANION APP (`userpref_manager.py`)
-Also write a secondary standalone script using `PySide6`. This is a dedicated Desktop app so artists don't have to manually edit `userpref.json`.
-- It loads `davinciFlow_config.json` to extract the `tasks` array.
-- It provides a `QLineEdit` for a preset name.
-- It provides a `QComboBox` populated with the tasks, and an "Add Task" `QPushButton`.
-- It uses a `QListWidget` to show currently added tasks in order, preventing duplicates via an error popup.
-- It has a "Save Preset" `QPushButton` that writes to `userpref.json`.
-- It has a `QTableWidget` to view all saved presets in `userpref.json`.
-
-## 8. LOGGING
-Implement a scalable logging system with levels 0-5.
-- Read `VERBOSE_LEVEL` from the json config.
-- Create a `log(msg, level=3)` helper function that checks against the global level before printing and delegates to Python's built-in `logging` module (`logging.error` for 1, `logging.warning` for 2, `logging.info` for 3, `logging.debug` for 4+).
+## 6. MATHEMATICAL LUT GENERATOR (`generate_luts.py`)
+Provide a standalone script (`generate_luts.py`) that uses raw math to bake Black & White transforms.
+- For generic `proxy_bw.cube`: Generates a 33x33x33 identity cube, forcing `L = R*0.2126 + G*0.7152 + B*0.0722`.
+- For the EXR LUT: Ingests the studio's EXR LUT, computes Rec.709 Luma `L`, and writes a new `.cube` where `R = G = B = L`.
