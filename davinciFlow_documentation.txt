@@ -8,13 +8,13 @@
 Write a Python 3 script named `davinciFlow.py` that bridges ShotGrid (Flow) and DaVinci Resolve. The script must query ShotGrid for the latest (or historical) media files for a specific sequence of shots or a direct Playlist, download missing proxies, and assemble them chronologically into a DaVinci Resolve timeline using the `DaVinciResolveScript` and `fusion.UIManager` APIs.
 
 ## 1. CONFIGURATION, AUTHENTICATION & DEPENDENCIES
-The script must authenticate with ShotGrid via `shotgun_api3`.
+The script must authenticate with ShotGrid via `shotgun_api3`. On Linux, it dynamically appends `/s/apps/packages/mikros/shotgunPythonApi/3.3.1` to `sys.path` to ensure the module can be imported.
 It requires `PyOpenColorIO` (opencolorio) for LUT mathematical processing and generation.
 It should fall back to default hardcoded credentials, but primarily attempt to load them from `davinciFlow_config.json`:
 - `flow_url` (default: "https://mikrosanim.priv.shotgunstudio.com/")
 - `script_name` (default: "resolveTest")
 - `script_key` (default: "vblervsd(ubdZzxsxtvo5jimv")
-- `proxy_download_path` (default: "T:\flowDavinci")
+- `proxy_download_path` (default: "T:\flowDavinci" on Windows, "/datas/dulacd/tmp/flowDavinci" on Linux)
 - `projects` (default: ["Tmnt2"])
 - `tasks` (default: `["delivery", "confo_render", "compo_comp", "compo_precomp", "light_precomp", "anim_main", "layout_base", "previz_base", "editing_edt"]`)
 - `verbose_level` (default: 3)
@@ -71,7 +71,8 @@ Create a `resolve_path(raw_path)` function:
 - If it starts with `V:\` but doesn't exist, smartly swap to `W:\` and check again (and vice versa).
 
 Create an `ensure_luts_installed()` function:
-- Checks `T:\davinciFlow_repo\luts`. Uses `shutil.copy2` to copy `.cube` files to DaVinci's system LUT folder at `C:\ProgramData\Blackmagic Design\DaVinci Resolve\Support\LUT\davinciFlow`.
+- On Windows: Checks `T:\davinciFlow_repo\luts`. Uses `shutil.copy2` to copy `.cube` files to DaVinci's system LUT folder at `C:\ProgramData\Blackmagic Design\DaVinci Resolve\Support\LUT\davinciFlow`.
+- On Linux: Checks `/datas/dulacd/gitHub/davinciFlow/luts`. Copies `.cube` files to `~/.local/share/DaVinciResolve/LUT/davinciFlow` or `/opt/resolve/LUT/davinciFlow` (or `/datas/dulacd/DaVinciResolve/LUT/davinciFlow`).
 
 ## 4. SHOTGRID QUERY LOGIC (`fetch_flow_data`)
 When "Build Sequence" is clicked, check the active Mode:
