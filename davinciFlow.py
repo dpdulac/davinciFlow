@@ -328,6 +328,11 @@ layout = ui.VGroup([
             ui.CheckBox({'ID': 'UseAudio', 'Checked': False, "ToolTip": "Fetch and sync published audio (.wav) from Flow to the timeline", "Weight": 0}),
             ui.Label({"Weight": 1})
         ]),
+        ui.HGroup([
+            ui.Label({'Text': 'Missing Shots:', "ToolTip": "If checked, creates a red placeholder clip. If unchecked, skips missing shots completely.", "Weight": 0}),
+            ui.CheckBox({'ID': 'MissingShotCheck', 'Checked': True, "ToolTip": "If checked, creates a red placeholder clip. If unchecked, skips missing shots completely.", "Weight": 0}),
+            ui.Label({"Weight": 1})
+        ]),
     ]),
     
     # TASKS
@@ -741,6 +746,7 @@ def OnBuild(ev):
     use_img = items["ImageSeqCheck"].Checked
     use_lut = items["ApplyLutCheck"].Checked
     use_audio = items["UseAudio"].Checked
+    include_missing_shots = items["MissingShotCheck"].Checked
     use_latest_timeline = items["UseLatestTimeline"].Checked
     
     take_combo_text = items["TakeCountCombo"].CurrentText
@@ -902,6 +908,9 @@ def OnBuild(ev):
             takes_data_list.append(take_path)
         
         if is_missing:
+            if not include_missing_shots:
+                log(f"Skipping {data['shot_code']} -> MISSING MEDIA (Missing Shots is unchecked).")
+                continue
             path = get_missing_media_path()
             log(f"Processing {data['shot_code']} -> MISSING MEDIA. Using placeholder.")
         elif is_web_proxy:
