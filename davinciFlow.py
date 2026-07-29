@@ -1161,8 +1161,12 @@ def OnBuild(ev):
                 if use_agx:
                     # AgX Pipeline Logic using .drx files
                     script_dir = os.path.dirname(os.path.abspath(__file__))
-                    if is_exr:
+                    item_name_lower = item.GetName().lower()
+                    
+                    if ".exr" in item_name_lower:
                         drx_path = os.path.join(script_dir, "AgX_exr.drx")
+                    elif any(ext in item_name_lower for ext in [".png", ".jpg", ".jpeg", ".tga", ".tiff", ".tif"]):
+                        drx_path = os.path.join(script_dir, "AgX_img.drx")
                     else:
                         drx_path = os.path.join(script_dir, "AgX_mov_proxy.drx")
                     
