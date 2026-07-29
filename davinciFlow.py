@@ -930,7 +930,9 @@ def OnBuild(ev):
                     
             clip_info = {
                 "mediaPoolItem": existing_clip,
-                "is_hero": is_hero
+                "is_hero": is_hero,
+                "is_missing": is_missing,
+                "shot_code": data['shot_code']
             }
             if use_audio:
                 clip_info["mediaType"] = 1 # Strip the embedded video audio
@@ -1079,7 +1081,7 @@ def OnBuild(ev):
     
     if appended_items:
         ensure_luts_installed()
-        print("Applying LUTs to timeline clips (Hero/Non-Hero)...")
+        print("Applying LUTs and Placeholders to timeline clips...")
         try:
             dvr_project.RefreshLUTList()
             exr_lut_exists = ('EXR_LUT' in globals() and EXR_LUT)
@@ -1087,8 +1089,45 @@ def OnBuild(ev):
                 if idx >= len(video_clip_infos): break
                 info = video_clip_infos[idx]
                 is_hero = info.get("is_hero", True)
-                is_exr = ".exr" in item.GetName().lower()
+                is_missing = info.get("is_missing", False)
+                shot_code = info.get("shot_code", "UNKNOWN")
                 
+                if is_missing:
+                    print(f"Applying Fusion Title Placeholder to {shot_code}")
+                    fusion_comp = item.AddFusionComp()
+                    if fusion_comp:
+                        bg_node = fusion_comp.AddTool("Background", True)
+                        text_node = fusion_comp.AddTool("TextPlus", True)
+                        merge_node = fusion_comp.AddTool("Merge", True)
+                        
+                        # Set colors (Solid Red)
+                        bg_node.SetInput("TopLeftRed", 1.0)
+                        bg_node.SetInput("TopLeftGreen", 0.0)
+                        bg_node.SetInput("TopLeftBlue", 0.0)
+                        bg_node.SetInput("TopRightRed", 1.0)
+                        bg_node.SetInput("TopRightGreen", 0.0)
+                        bg_node.SetInput("TopRightBlue", 0.0)
+                        bg_node.SetInput("BottomLeftRed", 1.0)
+                        bg_node.SetInput("BottomLeftGreen", 0.0)
+                        bg_node.SetInput("BottomLeftBlue", 0.0)
+                        bg_node.SetInput("BottomRightRed", 1.0)
+                        bg_node.SetInput("BottomRightGreen", 0.0)
+                        bg_node.SetInput("BottomRightBlue", 0.0)
+
+                        # Set text
+                        text_node.SetInput("StyledText", f"NO CLIP\n{shot_code}")
+                        
+                        # Connect them
+                        merge_node.SetInput("Background", bg_node)
+                        merge_node.SetInput("Foreground", text_node)
+                        
+                        # Connect to MediaOut
+                        media_out = fusion_comp.FindTool("MediaOut1")
+                        if media_out:
+                            media_out.SetInput("Input", merge_node)
+                    continue
+
+                is_exr = ".exr" in item.GetName().lower()
                 lut_to_apply = None
                 if is_exr:
                     if is_hero and use_lut and exr_lut_exists:
