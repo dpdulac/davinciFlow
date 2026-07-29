@@ -317,18 +317,16 @@ layout = ui.VGroup([
     ui.Button({"ID": "FileHeaderBtn", "Text": "▼ FILE", "Alignment": {"AlignLeft": True}, "Weight": 0}),
     ui.VGroup({"ID": "FileGrp", "Weight": 0}, [
         ui.HGroup([
-            ui.Label({"Text": "Use Image Sequences:", "ToolTip": "Download and load heavy image sequences instead of proxy movies", "Weight": 0}),
+            ui.Label({"Text": "Image Sequences:", "ToolTip": "Download and load heavy image sequences instead of proxy movies", "Weight": 0}),
             ui.CheckBox({"ID": "ImageSeqCheck", "Checked": False, "ToolTip": "Download and load heavy image sequences instead of proxy movies", "Weight": 0}),
             ui.VGap(2),
-            ui.CheckBox({"ID": "ApplyLutCheck", "Text": "Apply LUT", "Checked": True, "ToolTip": "Apply the color management LUT defined in the config to the EXR sequences", "Weight": 0}),
+            ui.CheckBox({"ID": "ApplyLutCheck", "Text": "Apply LUT", "Checked": True, "Enabled": False, "ToolTip": "Apply the color management LUT defined in the config to the EXR sequences", "Weight": 0}),
             ui.Label({"Weight": 1})
         ]),
         ui.HGroup([
             ui.Label({'Text': 'Audio File:', "ToolTip": "Fetch and sync published audio (.wav) from Flow to the timeline", "Weight": 0}),
             ui.CheckBox({'ID': 'UseAudio', 'Checked': False, "ToolTip": "Fetch and sync published audio (.wav) from Flow to the timeline", "Weight": 0}),
-            ui.Label({"Weight": 1})
-        ]),
-        ui.HGroup([
+            ui.VGap(2),
             ui.Label({'Text': 'Missing Shots:', "ToolTip": "If checked, creates a red placeholder clip. If unchecked, skips missing shots completely.", "Weight": 0}),
             ui.CheckBox({'ID': 'MissingShotCheck', 'Checked': True, "ToolTip": "If checked, creates a red placeholder clip. If unchecked, skips missing shots completely.", "Weight": 0}),
             ui.Label({"Weight": 1})
@@ -690,6 +688,10 @@ def OnUseHeroCheck(ev):
     items["HeroFilterLine"].Enabled = checked
     items["ReverseHeroCheck"].Enabled = checked
     items["ShowReviewShotsBtn"].Enabled = checked
+
+def OnImageSeqCheck(ev):
+    checked = items["ImageSeqCheck"].Checked
+    items["ApplyLutCheck"].Enabled = checked
 
 def OnModeChange(ev):
     mode = items["ModeCombo"].CurrentText
@@ -1343,6 +1345,7 @@ win.On.BuildBtn.Clicked = OnBuild
 win.On.CancelBtn.Clicked = OnCancel
 win.On.FlowDialog.Close = OnCancel
 win.On.UseHeroCheck.Clicked = OnUseHeroCheck
+win.On.ImageSeqCheck.Clicked = OnImageSeqCheck
 win.On.UsePresetCheck.Clicked = OnPresetCheck
 win.On.ModeCombo.CurrentIndexChanged = OnModeChange
 win.On.FindPlaylistBtn.Clicked = OnFindPlaylistBtn
