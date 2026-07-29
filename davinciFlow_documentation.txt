@@ -28,6 +28,12 @@ Build a GUI window (Geometry: `[400, 400, 550, 450]`) using `fusion.UIManager`.
 Organize it into distinct expandable/collapsible visual sections (`ui.VGroup`) toggled by Header Buttons (`▶ FLOW`, `▶ SHOT`, etc). Use a `create_toggle_handler` function to hide/show the VGroups.
 The `AdvancedGrp` must be forced to `.Hide()` state upon initialization!
 
+**Section: FILE**
+- `ImageSeqCheck`: Checkbox (labeled "Image Sequences:") to load heavy image sequences. Checking this triggers an `OnImageSeqCheck` event which toggles the enabled state of `ApplyLutCheck`.
+- `ApplyLutCheck`: Checkbox to apply the configuration LUT (Disabled by default).
+- `UseAudio`: Checkbox to fetch published .wav audio.
+- `MissingShotCheck`: Checkbox (labeled "Missing Shots:") placed next to `UseAudio`. Checked by default. If unchecked, the script bypasses missing shots entirely instead of generating placeholders.
+
 **Section: FLOW**
 - `ModeCombo`: Dropdown containing "Sequence Mode" and "Playlist Mode".
 - `ProjectCombo`: Dropdown of projects from config.
@@ -98,9 +104,10 @@ When "Build Sequence" is clicked, check the active Mode:
 2. **Timeline Logic**:
    - In Sequence Mode: Base name is `Seq_YYYY_MM_DD`. If `UseLatestTimeline` is false, it appends a suffix index. If true, it clears all clips in the latest existing one simultaneously using a bulk `target_timeline.DeleteClips(all_items)` operation for performance.
    - In Playlist Mode: Base name is `{PlaylistName}_vXXX`. If `UseLatestTimeline` is false, it parses the timeline names via regex (`_v(\d{3})$`) to mathematically increment the padding. If true, it clears all the clips in the highest version found.
-3. Import media and takes to Media Pool.
-4. Construct `clip_info` dicts (`{"mediaPoolItem": item, "is_hero": bool}`) for `AppendToTimeline()`. Calculate duration: `endFrame = sg_cut_out - sg_cut_in`.
-5. **LUT Application:** Iterate through `appended_items`.
+3. Import media and takes to Media Pool. *Note: If a shot proxy is missing on disk and `MissingShotCheck` is unchecked, the script skips appending this shot entirely.*
+4. Construct `clip_info` dicts (`{"mediaPoolItem": item, "is_hero": bool, "is_missing": bool, "shot_code": str}`) for `AppendToTimeline()`. Calculate duration: `endFrame = sg_cut_out - sg_cut_in`.
+5. **LUT & Placeholder Application:** Iterate through `appended_items`.
+   - **Missing Shots**: If `is_missing` is True, bypass LUT application. Use `item.AddFusionComp()` to create a local Fusion composition. Generate a solid red `Background` node and a `TextPlus` node containing "NO CLIP\n[shot_code]". Connect them via a `Merge` node to `MediaOut1` to create a dynamic timeline generator (replacing the need for an external .jpg file).
    - If EXR and is_hero: Apply standard `exr_lut`.
    - If EXR and NOT is_hero: Apply generated B&W LUT (`TMNT2_acescg_to_vd16_bw.cube`).
    - If Proxy and NOT is_hero: Apply generic `proxy_bw.cube`.

@@ -9,6 +9,7 @@ A powerful python bridge between ShotGrid (Flow) and DaVinci Resolve.
 - **Automated Timelines:** Creates timelines dynamically. In Sequence mode, it uses `{Seq}_YYYY_MM_DD`. In Playlist mode, it generates mathematical `{Playlist}_vXXX` sequences.
 - **Historical Takes:** Stacks previous version iterations into DaVinci "Takes" under the primary clips.
 - **Proxy Management:** Auto-downloads missing web proxies from Shotgrid using parallel threading.
+- **Dynamic Placeholders:** When media is missing, the script utilizes the Fusion API to generate native red text placeholders directly on the timeline, or can optionally skip missing shots altogether to condense the sequence.
 - **Preset Management:** A standalone Desktop App (`userpref_manager.py`) allows artists to create custom task hierarchy presets.
 
 ## Usage
