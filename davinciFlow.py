@@ -460,7 +460,7 @@ def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use
             log("No shots linked to the versions in this playlist.")
             return None
             
-        shots = retry_sg(lambda: sg.find("Shot", [["id", "in", shot_ids]], ["id", "code", "sg_cut_in", "sg_cut_out", "sg_head_in"]))
+        shots = retry_sg(lambda: sg.find("Shot", [["id", "in", shot_ids]], ["id", "code", "sg_cut_in", "sg_cut_out", "sg_head_in", "sg_cut_order"]))
         
         # Apply target_shots filter
         if target_shots:
@@ -507,7 +507,8 @@ def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use
                 'cut_out': shot_data.get('sg_cut_out'),
                 'head_in': shot_data.get('sg_head_in'),
                 'is_web_proxy': is_web_proxy,
-                'takes': []  # No historical takes in playlist mode
+                'takes': [],  # No historical takes in playlist mode
+                'cut_order': shot_data.get('sg_cut_order')
             }
             
         return final_data
@@ -518,7 +519,7 @@ def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use
         ['project', 'is', project],
         ['sg_sequence', 'name_is', sequence_name]
     ]
-    shot_fields = ['id', 'code', 'sg_cut_in', 'sg_cut_out', 'sg_head_in']
+    shot_fields = ['id', 'code', 'sg_cut_in', 'sg_cut_out', 'sg_head_in', 'sg_cut_order']
     shots = retry_sg(lambda: sg.find("Shot", shot_filters, shot_fields))
     
     if not shots:
@@ -653,7 +654,8 @@ def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use
                     'takes': takes_list,
                     'cut_in': shot_data.get('sg_cut_in'),
                     'cut_out': shot_data.get('sg_cut_out'),
-                    'head_in': shot_data.get('sg_head_in')
+                    'head_in': shot_data.get('sg_head_in'),
+                    'cut_order': shot_data.get('sg_cut_order')
                 }
                 found_media = True
                 break 
@@ -667,7 +669,8 @@ def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use
                 'is_web_proxy': False,
                 'cut_in': shot_data.get('sg_cut_in'),
                 'cut_out': shot_data.get('sg_cut_out'),
-                'head_in': shot_data.get('sg_head_in')
+                'head_in': shot_data.get('sg_head_in'),
+                'cut_order': shot_data.get('sg_cut_order')
             }
                         
     return media_dict
@@ -854,7 +857,7 @@ def OnBuild(ev):
     audio_clip_infos = []
     pending_takes_to_attach = []
     
-    sorted_shots = sorted(media_data.values(), key=lambda x: x['shot_code'])
+    sorted_shots = sorted(media_data.values(), key=lambda x: (x.get('cut_order') or 999999, x['shot_code']))
     
     log("\n=== Resolving Media Paths ===", level=4)
     if not os.path.exists(PROXY_DOWNLOAD_PATH):
@@ -943,7 +946,8 @@ def OnBuild(ev):
                 "mediaPoolItem": existing_clip,
                 "is_hero": is_hero,
                 "is_missing": is_missing,
-                "shot_code": data['shot_code']
+                "shot_code": data['shot_code'],
+                "cut_order": data.get('sg_cut_order')
             }
             if use_audio:
                 clip_info["mediaType"] = 1 # Strip the embedded video audio
