@@ -376,6 +376,8 @@ layout = ui.VGroup([
     ui.Button({"ID": "AdvancedHeaderBtn", "Text": "▼ ADVANCED", "Alignment": {"AlignLeft": True}, "Weight": 0}),
     ui.VGroup({"ID": "AdvancedGrp", "Weight": 0}, [
         ui.HGroup([
+            ui.CheckBox({"ID": "AgxCheck", "Text": "AgX Pipeline", "Checked": False, "ToolTip": "Apply AgX DRX color grades instead of standard LUTs", "Weight": 0}),
+            ui.HGap(5),
             ui.Button({'ID': 'CleanCacheBtn', 'Text': 'Clean Cache', 'ToolTip': 'Delete all downloaded MP4 proxies in the cache directory', 'Weight': 0}),
             ui.Label({"Weight": 1})
         ])
@@ -759,6 +761,7 @@ def OnBuild(ev):
     include_missing_shots = items["MissingShotCheck"].Checked
     use_cut_order = items["CutOrderCheck"].Checked
     use_latest_timeline = items["UseLatestTimeline"].Checked
+    use_agx = items["AgxCheck"].Checked
     
     take_combo_text = items["TakeCountCombo"].CurrentText
     if take_combo_text == "None (Latest Only)":
@@ -1153,21 +1156,43 @@ def OnBuild(ev):
 
                 is_exr = ".exr" in item.GetName().lower()
                 lut_to_apply = None
-                if is_exr:
-                    if is_hero and use_lut and exr_lut_exists:
-                        lut_to_apply = EXR_LUT
-                    elif not is_hero:
-                        if exr_lut_exists:
-                            basename = os.path.basename(EXR_LUT)
-                            name, ext = os.path.splitext(basename)
-                            lut_to_apply = f"davinciFlow/{name}_bw{ext}"
-                        else:
-                            lut_to_apply = "davinciFlow/proxy_bw.cube"
+                drx_to_apply = None
+
+                if use_agx:
+                    # AgX Pipeline Logic using .drx files
+                    script_dir = os.path.dirname(os.path.abspath(__file__))
+                    if is_exr:
+                        drx_path = os.path.join(script_dir, "AgX_exr.drx")
+                    else:
+                        drx_path = os.path.join(script_dir, "AgX_mov_proxy.drx")
+                    
+                    if os.path.exists(drx_path):
+                        drx_to_apply = drx_path
+                    else:
+                        print(f"Warning: AgX .drx file not found at {drx_path}")
                 else:
-                    if not is_hero:
-                        lut_to_apply = "davinciFlow/proxy_bw.cube"
-                
-                if lut_to_apply:
+                    # Standard LUT Pipeline Logic
+                    if is_exr:
+                        if is_hero and use_lut and exr_lut_exists:
+                            lut_to_apply = EXR_LUT
+                        elif not is_hero:
+                            if exr_lut_exists:
+                                basename = os.path.basename(EXR_LUT)
+                                name, ext = os.path.splitext(basename)
+                                lut_to_apply = f"davinciFlow/{name}_bw{ext}"
+                            else:
+                                lut_to_apply = "davinciFlow/proxy_bw.cube"
+                    else:
+                        if not is_hero:
+                            lut_to_apply = "davinciFlow/proxy_bw.cube"
+
+                if drx_to_apply:
+                    try:
+                        # 0: "No keyframes", 1: "Source Timecode aligned", 2: "Start Frames aligned"
+                        item.GetNodeGraph().ApplyGradeFromDRX(drx_to_apply, 0)
+                    except Exception as e:
+                        print(f"Warning: Failed to apply DRX grade: {e}")
+                elif lut_to_apply:
                     try:
                         item.GetNodeGraph().SetLUT(1, lut_to_apply)
                     except AttributeError:
