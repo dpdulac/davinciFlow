@@ -277,11 +277,8 @@ layout = ui.VGroup([
     ui.Button({"ID": "FlowHeaderBtn", "Text": "▼ FLOW", "Alignment": {"AlignLeft": True}, "Weight": 0}),
     ui.VGroup({"ID": "FlowGrp", "Weight": 0}, [
         ui.HGroup([
-            ui.Label({"Text": "Mode:", "ToolTip": "Switch between Sequence Mode and Playlist Mode", "Weight": 0}),
-            ui.ComboBox({"ID": "ModeCombo", "Weight": 2}),
-            ui.VGap(2),
-            ui.Label({"Text": "Use Cut Order:", "ToolTip": "Sort clips by Flow cut order instead of alphabetical", "Weight": 0}),
-            ui.CheckBox({"ID": "CutOrderCheck", "Checked": True, "ToolTip": "Sort clips by Flow cut order instead of alphabetical", "Weight": 0})
+            ui.Label({"Text": "Mode:", "ToolTip": "Switch between Sequence Mode and Playlist Mode"}),
+            ui.ComboBox({"ID": "ModeCombo", "Weight": 2})
         ]),
         ui.HGroup([
             ui.Label({"Text": "Project:", "ToolTip": "Select the Flow project to load"}),
@@ -290,6 +287,11 @@ layout = ui.VGroup([
         ui.HGroup({"ID": "SeqGrp"}, [
             ui.Label({"Text": "Sequence:", "Weight": 0}),
             ui.ComboBox({"ID": "SeqCombo", "Weight": 2, "ToolTip": "Select the sequence to build"})
+        ]),
+        ui.HGroup([
+            ui.Label({"Text": "Use Cut Order:", "ToolTip": "Sort clips by Flow cut order instead of alphabetical", "Weight": 0}),
+            ui.CheckBox({"ID": "CutOrderCheck", "Checked": True, "ToolTip": "Sort clips by Flow cut order instead of alphabetical", "Weight": 0}),
+            ui.Label({"Weight": 1})
         ]),
         ui.HGroup({"ID": "PlaylistGrp"}, [
             ui.Label({"Text": "Playlist:", "Weight": 0}),
