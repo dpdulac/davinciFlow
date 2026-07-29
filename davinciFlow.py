@@ -12,10 +12,22 @@ import concurrent.futures
 try:
     _dir = os.path.dirname(os.path.abspath(__file__))
 except NameError:
-    if os.path.exists(r"C:\ProgramData\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility\davinciFlow"):
-        _dir = r"C:\ProgramData\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility\davinciFlow"
+    if sys.platform == "win32":
+        if os.path.exists(r"C:\ProgramData\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility\davinciFlow"):
+            _dir = r"C:\ProgramData\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility\davinciFlow"
+        else:
+            _dir = r"W:\jmji\_sandbox\dulacd\Script\Blender"
     else:
-        _dir = r"W:\jmji\_sandbox\dulacd\Script\Blender"
+        linux_path = os.path.expanduser("~/.local/share/DaVinciResolve/Fusion/Scripts/Utility/davinciFlow")
+        custom_linux_path = "/datas/dulacd/DaVinciResolve/Fusion/Scripts/Utility/davinciFlow"
+        if os.path.exists(linux_path):
+            _dir = linux_path
+        elif os.path.exists(custom_linux_path):
+            _dir = custom_linux_path
+        elif os.path.exists("/opt/resolve/Fusion/Scripts/Utility/davinciFlow"):
+            _dir = "/opt/resolve/Fusion/Scripts/Utility/davinciFlow"
+        else:
+            _dir = "/datas/dulacd"
 LOG_PATH = os.path.join(_dir, "davinciFlow.log")
 
 
@@ -27,18 +39,15 @@ try:
     SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 except NameError:
     # DaVinci Resolve's embedded interpreter doesn't set __file__
-    if os.path.exists(r"C:\ProgramData\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility\davinciFlow"):
-        SCRIPT_DIR = r"C:\ProgramData\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility\davinciFlow"
-    else:
-        SCRIPT_DIR = r"W:\jmji\_sandbox\dulacd\Script\Blender"
-    
+    SCRIPT_DIR = _dir
+
 CONFIG_PATH = os.path.join(SCRIPT_DIR, "davinciFlow_config.json")
 
 # Default fallback values if config fails
 FLOW_URL = "https://mikrosanim.priv.shotgunstudio.com/"
 SCRIPT_NAME = "resolveTest"
 SCRIPT_KEY = "vblervsd(ubdZzxsxtvo5jimv"
-PROXY_DOWNLOAD_PATH = r"T:\flowDavinci"
+PROXY_DOWNLOAD_PATH = r"T:\flowDavinci" if sys.platform == "win32" else "/datas/dulacd/tmp/flowDavinci"
 PROJECTS = ["Tmnt2"]
 MASTER_TASKS = [
     "delivery", "confo_render", "compo_comp", "compo_precomp",
@@ -54,6 +63,8 @@ if os.path.exists(CONFIG_PATH):
             SCRIPT_NAME = config.get('script_name', SCRIPT_NAME)
             SCRIPT_KEY = config.get('script_key', SCRIPT_KEY)
             PROXY_DOWNLOAD_PATH = config.get('proxy_download_path', PROXY_DOWNLOAD_PATH)
+            if sys.platform != "win32" and PROXY_DOWNLOAD_PATH.startswith("T:\\"):
+                PROXY_DOWNLOAD_PATH = "/datas/dulacd/tmp/flowDavinci"
             PROJECTS = config.get('projects', PROJECTS)
             MASTER_TASKS = config.get('tasks', MASTER_TASKS)
             EXR_LUT = config.get('exr_lut', '')
@@ -91,8 +102,16 @@ if os.path.exists(USERPREF_PATH):
 try:
     import shotgun_api3
 except ImportError:
-    print("Error: The 'shotgun_api3' module is not installed.")
-    sys.exit(1)
+    if sys.platform != "win32":
+        sys.path.append("/s/apps/packages/mikros/shotgunPythonApi/3.3.1")
+        try:
+            import shotgun_api3
+        except ImportError:
+            print("Error: The 'shotgun_api3' module is not installed (Linux fallback failed).")
+            sys.exit(1)
+    else:
+        print("Error: The 'shotgun_api3' module is not installed.")
+        sys.exit(1)
 
 try:
     resolve = bmd.scriptapp('Resolve')
@@ -188,8 +207,14 @@ def find_clip_in_folder(folder, file_path):
 
 def ensure_luts_installed():
     import shutil
-    davinci_lut_dir = r"C:\ProgramData\Blackmagic Design\DaVinci Resolve\Support\LUT\davinciFlow"
-    repo_lut_dir = r"T:\davinciFlow_repo\luts"
+    if sys.platform == "win32":
+        davinci_lut_dir = r"C:\ProgramData\Blackmagic Design\DaVinci Resolve\Support\LUT\davinciFlow"
+        repo_lut_dir = r"T:\davinciFlow_repo\luts"
+    else:
+        davinci_lut_dir = os.path.expanduser("~/.local/share/DaVinciResolve/LUT/davinciFlow")
+        if not os.path.exists(os.path.expanduser("~/.local/share/DaVinciResolve/LUT")):
+            davinci_lut_dir = "/datas/dulacd/DaVinciResolve/LUT/davinciFlow"
+        repo_lut_dir = "/datas/dulacd/gitHub/davinciFlow/luts"
     if not os.path.exists(repo_lut_dir): return
     os.makedirs(davinci_lut_dir, exist_ok=True)
     for f in os.listdir(repo_lut_dir):
@@ -207,6 +232,13 @@ def _path_exists_smart(p):
 def resolve_path(raw_path):
     if not raw_path: return None
     
+    if sys.platform != "win32":
+        clean_path = raw_path.replace("\\", "/")
+        if clean_path.upper().startswith("V:/") or clean_path.upper().startswith("W:/"):
+            tail = clean_path[3:]
+            return f"/s/prodanim/{tail}"
+        return clean_path
+
     clean_path = raw_path.replace("/", "\\")
     
     # Handle Linux paths
@@ -1009,12 +1041,15 @@ def OnBuild(ev):
             print(f"Found latest timeline: {target_timeline.GetName()}. Clearing existing clips...")
             dvr_project.SetCurrentTimeline(target_timeline)
             
+            all_items = []
             for t_type in ['video', 'audio', 'subtitle']:
                 t_count = target_timeline.GetTrackCount(t_type)
                 for t_idx in range(1, t_count + 1):
                     t_items = target_timeline.GetItemListInTrack(t_type, t_idx)
                     if t_items:
-                        target_timeline.DeleteClips(t_items)
+                        all_items.extend(t_items)
+            if all_items:
+                target_timeline.DeleteClips(all_items)
         else:
             # Not using latest -> Increment version
             if is_playlist_mode:
@@ -1047,7 +1082,6 @@ def OnBuild(ev):
         print("Applying LUTs to timeline clips (Hero/Non-Hero)...")
         try:
             dvr_project.RefreshLUTList()
-            resolve.OpenPage("color")
             exr_lut_exists = ('EXR_LUT' in globals() and EXR_LUT)
             for idx, item in enumerate(appended_items):
                 if idx >= len(video_clip_infos): break
@@ -1071,8 +1105,10 @@ def OnBuild(ev):
                         lut_to_apply = "davinciFlow/proxy_bw.cube"
                 
                 if lut_to_apply:
-                    item.SetLUT(1, lut_to_apply)
-            resolve.OpenPage("edit")
+                    try:
+                        item.GetNodeGraph().SetLUT(1, lut_to_apply)
+                    except AttributeError:
+                        item.SetLUT(1, lut_to_apply)
         except Exception as e:
             print(f"Warning: Failed to apply LUTs: {e}")
             
