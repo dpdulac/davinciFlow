@@ -277,8 +277,11 @@ layout = ui.VGroup([
     ui.Button({"ID": "FlowHeaderBtn", "Text": "▼ FLOW", "Alignment": {"AlignLeft": True}, "Weight": 0}),
     ui.VGroup({"ID": "FlowGrp", "Weight": 0}, [
         ui.HGroup([
-            ui.Label({"Text": "Mode:", "ToolTip": "Switch between Sequence Mode and Playlist Mode"}),
-            ui.ComboBox({"ID": "ModeCombo", "Weight": 2})
+            ui.Label({"Text": "Mode:", "ToolTip": "Switch between Sequence Mode and Playlist Mode", "Weight": 0}),
+            ui.ComboBox({"ID": "ModeCombo", "Weight": 2}),
+            ui.VGap(2),
+            ui.Label({"Text": "Use Cut Order:", "ToolTip": "Sort clips by Flow cut order instead of alphabetical", "Weight": 0}),
+            ui.CheckBox({"ID": "CutOrderCheck", "Checked": True, "ToolTip": "Sort clips by Flow cut order instead of alphabetical", "Weight": 0})
         ]),
         ui.HGroup([
             ui.Label({"Text": "Project:", "ToolTip": "Select the Flow project to load"}),
@@ -752,6 +755,7 @@ def OnBuild(ev):
     use_lut = items["ApplyLutCheck"].Checked
     use_audio = items["UseAudio"].Checked
     include_missing_shots = items["MissingShotCheck"].Checked
+    use_cut_order = items["CutOrderCheck"].Checked
     use_latest_timeline = items["UseLatestTimeline"].Checked
     
     take_combo_text = items["TakeCountCombo"].CurrentText
@@ -857,7 +861,10 @@ def OnBuild(ev):
     audio_clip_infos = []
     pending_takes_to_attach = []
     
-    sorted_shots = sorted(media_data.values(), key=lambda x: (x.get('cut_order') or 999999, x['shot_code']))
+    if use_cut_order:
+        sorted_shots = sorted(media_data.values(), key=lambda x: (x.get('cut_order') or 999999, x['shot_code']))
+    else:
+        sorted_shots = sorted(media_data.values(), key=lambda x: x['shot_code'])
     
     log("\n=== Resolving Media Paths ===", level=4)
     if not os.path.exists(PROXY_DOWNLOAD_PATH):

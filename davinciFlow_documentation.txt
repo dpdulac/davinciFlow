@@ -36,6 +36,7 @@ The `AdvancedGrp` must be forced to `.Hide()` state upon initialization!
 
 **Section: FLOW**
 - `ModeCombo`: Dropdown containing "Sequence Mode" and "Playlist Mode".
+- `CutOrderCheck`: Checkbox (labeled "Use Cut Order:"). If checked (default), the script sorts the timeline strictly by `sg_cut_order`. If unchecked, it falls back to alphabetical sorting of the shot codes.
 - `ProjectCombo`: Dropdown of projects from config.
 - `SeqGrp`: An HGroup containing `SeqCombo` (Sequence numbers).
 - `PlaylistGrp`: An HGroup (hidden by default) containing a `PlaylistSearchLine`, a `FindPlaylistBtn`, and a `PlaylistCombo`. 
