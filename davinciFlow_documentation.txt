@@ -118,3 +118,28 @@ When "Build Sequence" is clicked, check the active Mode:
 Provide a standalone script (`generate_luts.py`) that uses raw math to bake Black & White transforms.
 - For generic `proxy_bw.cube`: Generates a 33x33x33 identity cube, forcing `L = R*0.2126 + G*0.7152 + B*0.0722`.
 - For the EXR LUT: Ingests the studio's EXR LUT, computes Rec.709 Luma `L`, and writes a new `.cube` where `R = G = B = L`.
+
+**Section: ADVANCED**
+- `AgxCheck`: Checkbox (labeled "AgX Pipeline"). If checked, it enables the Camera AgX pipeline for all imported media by dynamically applying pre-saved DaVinci Resolve stills (.drx) instead of standard LUTs.
+- `CleanCacheBtn`: Button to clear the MP4 proxy cache directory.
+
+## AgX Pipeline Configuration (.drx files)
+Due to DaVinci Resolve Scripting API limitations, the script cannot programmatically generate Color Space Transform (CST) and DCTL nodes on the fly. To support the Camera AgX workflow, the script relies on pre-saved DaVinci PowerGrades (.drx files) placed in the `drx/` subdirectory.
+
+When `AgxCheck` is enabled, the script dynamically applies one of three node trees depending on the media type:
+1. `drx/AgX_mov_proxy.drx`: Applied to standard video proxies (.mov, .mp4, DNxHD, etc.)
+2. `drx/AgX_img.drx`: Applied to standard image formats (.png, .jpg, .tga)
+3. `drx/AgX_exr.drx`: Applied to .exr files.
+
+**Standard Color Science Setup for DRX files:**
+Assuming the Camera AgX DCTL expects an **ARRI LogC3 / Wide Gamut 3** working color space, configure your nodes as follows and export the still as a .drx file:
+
+- **AgX_mov_proxy.drx (Rec.709 Proxies)**
+  - Node 1: CST (Input: Rec.709/Gamma 2.4 | Output: ARRI Wide Gamut 3/ARRI LogC3)
+  - Node 2: Camera AgX DCTL
+- **AgX_img.drx (sRGB Images)**
+  - Node 1: CST (Input: sRGB/sRGB | Output: ARRI Wide Gamut 3/ARRI LogC3)
+  - Node 2: Camera AgX DCTL
+- **AgX_exr.drx (EXR Sequences)**
+  - Node 1: OCIO ColorSpace (Source: ACES - ACEScg | Target: Input - ARRI - V3 LogC (EI800) - Wide Gamut)
+  - Node 2: Camera AgX DCTL

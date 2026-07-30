@@ -1164,11 +1164,11 @@ def OnBuild(ev):
                     item_name_lower = item.GetName().lower()
                     
                     if ".exr" in item_name_lower:
-                        drx_path = os.path.join(script_dir, "AgX_exr.drx")
+                        drx_path = os.path.join(script_dir, "drx", "AgX_exr.drx")
                     elif any(ext in item_name_lower for ext in [".png", ".jpg", ".jpeg", ".tga", ".tiff", ".tif"]):
-                        drx_path = os.path.join(script_dir, "AgX_img.drx")
+                        drx_path = os.path.join(script_dir, "drx", "AgX_img.drx")
                     else:
-                        drx_path = os.path.join(script_dir, "AgX_mov_proxy.drx")
+                        drx_path = os.path.join(script_dir, "drx", "AgX_mov_proxy.drx")
                     
                     if os.path.exists(drx_path):
                         drx_to_apply = drx_path
