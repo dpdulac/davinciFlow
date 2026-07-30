@@ -143,3 +143,7 @@ Assuming the Camera AgX DCTL expects an **ARRI LogC3 / Wide Gamut 3** working co
 - **AgX_exr.drx (EXR Sequences)**
   - Node 1: OCIO ColorSpace (Source: ACES - ACEScg | Target: Input - ARRI - V3 LogC (EI800) - Wide Gamut)
   - Node 2: Camera AgX DCTL
+
+**IMPORTANT WARNING FOR CROSS-PLATFORM DEPLOYMENT (WINDOWS):**
+Because the DaVinci Resolve `.drx` files encode node properties into a hexadecimal blob, absolute file paths (such as the path to your `config.ocio` file) are hardcoded into the blob and cannot be dynamically changed by this python script. 
+If you install this script on a Windows machine, the OCIO path inside `AgX_exr.drx` (which points to a Linux `/s/prodanim/...` directory) will be invalid. You must open DaVinci Resolve on the Windows machine, manually update the OCIO node with the correct Windows path to your `config.ocio` file, and re-export the `AgX_exr.drx` file into the `drx/` folder to overwrite the Linux version.
