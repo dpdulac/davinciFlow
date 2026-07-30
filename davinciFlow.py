@@ -1160,7 +1160,7 @@ def OnBuild(ev):
 
                 if use_agx:
                     # AgX Pipeline Logic using .drx files
-                    script_dir = os.path.dirname(os.path.abspath(__file__))
+                    script_dir = SCRIPT_DIR
                     item_name_lower = item.GetName().lower()
                     
                     if ".exr" in item_name_lower:
@@ -1193,9 +1193,13 @@ def OnBuild(ev):
                 if drx_to_apply:
                     try:
                         # 0: "No keyframes", 1: "Source Timecode aligned", 2: "Start Frames aligned"
-                        item.GetNodeGraph().ApplyGradeFromDRX(drx_to_apply, 0)
+                        res = item.GetNodeGraph().ApplyGradeFromDRX(drx_to_apply, 0)
+                        if not res:
+                            print(f"Warning: ApplyGradeFromDRX returned False for {drx_to_apply}. The DRX might be incompatible or the path is invalid.")
+                        else:
+                            print(f"Successfully applied DRX: {drx_to_apply}")
                     except Exception as e:
-                        print(f"Warning: Failed to apply DRX grade: {e}")
+                        print(f"Warning: Failed to apply DRX grade (Exception): {e}")
                 elif lut_to_apply:
                     try:
                         item.GetNodeGraph().SetLUT(1, lut_to_apply)
