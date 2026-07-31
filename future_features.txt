@@ -1,0 +1,19 @@
+1. Un-Hardcoding "TMNT2" (Dynamic Show Configs)
+   - Move all show-specific logic (which .drx to use, ShotGrid filters, color pipelines) into a config.json (or multiple .json files per show).
+   - Read the ShotGrid project name and dynamically load the correct rules.
+
+2. Multi-Track Versioning (A/B Wiping)
+   - Query ShotGrid for the previous approved version of a shot.
+   - Place the old version on Video Track 1 and the new version on Video Track 2 to allow the reviewer to instantly toggle and A/B wipe between versions.
+
+3. Automatic Timeline Markers from ShotGrid
+   - Pull "Director Notes" or "Review Notes" from ShotGrid when importing a shot.
+   - Automatically create DaVinci Resolve Timeline Markers directly on the clips containing these notes for easy context.
+
+4. Advanced Fusion Burn-ins / Data Slates
+   - Expand the Fusion placeholder logic to create data burn-ins on all clips.
+   - Dynamically print version_name, focal_length, animator_name, or date in the corner of the screen for dailies reviews.
+
+5. Two-Way Sync (Pushing Notes back to ShotGrid)
+   - Add a "Sync Notes" button to the UI.
+   - Gather notes written inside DaVinci Resolve markers on the timeline and push them back to ShotGrid as official Review Notes attached to the shots.

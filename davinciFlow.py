@@ -71,6 +71,23 @@ if os.path.exists(CONFIG_PATH):
     except Exception as e:
         print(f"Failed to load json config: {e}")
 
+# Dynamically load show configurations
+SHOW_CONFIGS = {}
+CONFIGS_DIR = os.path.join(SCRIPT_DIR, "configs")
+if os.path.exists(CONFIGS_DIR):
+    for f_name in os.listdir(CONFIGS_DIR):
+        if f_name.endswith(".json"):
+            try:
+                with open(os.path.join(CONFIGS_DIR, f_name), 'r') as cf:
+                    cfg = json.load(cf)
+                    display_name = cfg.get("display_name")
+                    if display_name:
+                        SHOW_CONFIGS[display_name.lower()] = cfg
+                        if display_name not in PROJECTS and display_name.lower() != "default":
+                            PROJECTS.append(display_name)
+            except Exception as e:
+                print(f"Failed to load show config {f_name}: {e}")
+
 VERBOSE_LEVEL = config.get('verbose_level', 3) if 'config' in locals() else 3
 level_map = {0: logging.CRITICAL, 1: logging.ERROR, 2: logging.WARNING, 3: logging.INFO, 4: logging.DEBUG, 5: logging.DEBUG}
 logging.basicConfig(filename=LOG_PATH, level=level_map.get(VERBOSE_LEVEL, logging.INFO), 
@@ -1159,20 +1176,17 @@ def OnBuild(ev):
                 lut_to_apply = None
                 drx_to_apply = None
 
-                if is_exr and proj_str.lower() == "tmnt2" and use_img and use_lut:
-                    # TMNT2 Native OCIO Node Pipeline
-                    drx_path = os.path.join(SCRIPT_DIR, "drx", "tmnt2_0cio_exr.drx")
+                if is_exr and use_img and use_lut:
+                    # Dynamic Project Node Pipeline
+                    proj_key = proj_str.lower()
+                    active_config = SHOW_CONFIGS.get(proj_key, SHOW_CONFIGS.get("default", {}))
+                    drx_file = active_config.get("exr_drx_grade", "Acescg.drx")
+                    drx_path = os.path.join(SCRIPT_DIR, "drx", drx_file)
+                    
                     if os.path.exists(drx_path):
                         drx_to_apply = drx_path
                     else:
-                        print(f"Warning: TMNT2 OCIO .drx file not found at {drx_path}")
-                elif is_exr and proj_str.lower() != "tmnt2" and use_img and use_lut:
-                    # Standard ACEScg Pipeline using generic DRX
-                    drx_path = os.path.join(SCRIPT_DIR, "drx", "Acescg.drx")
-                    if os.path.exists(drx_path):
-                        drx_to_apply = drx_path
-                    else:
-                        print(f"Warning: Acescg .drx file not found at {drx_path}")
+                        print(f"Warning: Project DRX file not found at {drx_path}")
                 elif use_agx:
                     # AgX Pipeline Logic using .drx files
                     script_dir = SCRIPT_DIR
