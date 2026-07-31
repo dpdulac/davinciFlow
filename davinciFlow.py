@@ -1159,9 +1159,20 @@ def OnBuild(ev):
                 lut_to_apply = None
                 drx_to_apply = None
 
-                if proj_str.lower() == "tmnt2" and is_exr and use_lut and use_img:
-                    # TMNT2 3D LUT Pipeline (with ACEScct Shaper)
-                    lut_to_apply = "davinciFlow/tmnt2_acescg_to_rec709_shaper.cube"
+                if is_exr and proj_str.lower() == "tmnt2":
+                    # TMNT2 Native OCIO Node Pipeline
+                    drx_path = os.path.join(SCRIPT_DIR, "drx", "tmnt2_0cio_exr.drx")
+                    if os.path.exists(drx_path):
+                        drx_to_apply = drx_path
+                    else:
+                        print(f"Warning: TMNT2 OCIO .drx file not found at {drx_path}")
+                elif is_exr and proj_str.lower() != "tmnt2" and use_img and use_lut:
+                    # Standard ACEScg Pipeline using generic DRX
+                    drx_path = os.path.join(SCRIPT_DIR, "drx", "Acescg.drx")
+                    if os.path.exists(drx_path):
+                        drx_to_apply = drx_path
+                    else:
+                        print(f"Warning: Acescg .drx file not found at {drx_path}")
                 elif use_agx:
                     # AgX Pipeline Logic using .drx files
                     script_dir = SCRIPT_DIR
