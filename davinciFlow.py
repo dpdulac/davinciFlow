@@ -1160,8 +1160,8 @@ def OnBuild(ev):
                 drx_to_apply = None
 
                 if proj_str.lower() == "tmnt2" and is_exr and use_lut and use_img:
-                    # TMNT2 3D LUT Pipeline
-                    lut_to_apply = "davinciFlow/tmnt2_acescg_to_rec709.cube"
+                    # TMNT2 3D LUT Pipeline (with ACEScct Shaper)
+                    lut_to_apply = "davinciFlow/tmnt2_acescg_to_rec709_shaper.cube"
                 elif use_agx:
                     # AgX Pipeline Logic using .drx files
                     script_dir = SCRIPT_DIR
