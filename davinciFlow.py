@@ -467,7 +467,7 @@ def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use
             log("No shots linked to the versions in this playlist.")
             return None
             
-        shots = retry_sg(lambda: sg.find("Shot", [["id", "in", shot_ids]], ["id", "code", "sg_cut_in", "sg_cut_out", "sg_head_in", "sg_cut_order"]))
+        shots = retry_sg(lambda: sg.find("Shot", [["id", "in", shot_ids], ["sg_status_list", "is_not", "omt"]], ["id", "code", "sg_cut_in", "sg_cut_out", "sg_head_in", "sg_cut_order"]))
         
         # Apply target_shots filter
         if target_shots:
@@ -524,7 +524,8 @@ def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use
     log(f"\nQuerying Shots for Sequence {sequence_name}...")
     shot_filters = [
         ['project', 'is', project],
-        ['sg_sequence', 'name_is', sequence_name]
+        ['sg_sequence', 'name_is', sequence_name],
+        ['sg_status_list', 'is_not', 'omt']
     ]
     shot_fields = ['id', 'code', 'sg_cut_in', 'sg_cut_out', 'sg_head_in', 'sg_cut_order']
     shots = retry_sg(lambda: sg.find("Shot", shot_filters, shot_fields))
@@ -1270,7 +1271,7 @@ def create_show_shots_handler(target_line_id):
             if not is_playlist_mode:
                 seq = sg.find_one("Sequence", [["code", "is", seq_name], ["project", "is", proj]], ["id"])
                 if not seq: raise Exception("Sequence not found")
-                shots = sg.find("Shot", [["sg_sequence", "is", seq]], ["code"])
+                shots = sg.find("Shot", [["sg_sequence", "is", seq], ["sg_status_list", "is_not", "omt"]], ["code"])
                 codes = sorted([s["code"] for s in shots])
                 win_title = f"Available Shots: {seq_name}"
             else:
