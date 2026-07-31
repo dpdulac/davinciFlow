@@ -82,6 +82,9 @@ Create an `ensure_luts_installed()` function:
 - On Linux: Checks `/datas/dulacd/gitHub/davinciFlow/luts`. Copies `.cube` files to `~/.local/share/DaVinciResolve/LUT/davinciFlow` or `/opt/resolve/LUT/davinciFlow` (or `/datas/dulacd/DaVinciResolve/LUT/davinciFlow`).
 
 ## 4. SHOTGRID QUERY LOGIC (`fetch_flow_data`)
+**Global Query Rules:**
+- Whenever querying for `Shot` entities (in Sequence Mode, Playlist Mode, or the Shot Browser UI), the script must always append the filter `["sg_status_list", "is_not", "omt"]` to ensure omitted shots are completely ignored and not loaded into DaVinci.
+
 When "Build Sequence" is clicked, check the active Mode:
 
 **If Sequence Mode:**
@@ -109,15 +112,17 @@ When "Build Sequence" is clicked, check the active Mode:
 4. Construct `clip_info` dicts (`{"mediaPoolItem": item, "is_hero": bool, "is_missing": bool, "shot_code": str}`) for `AppendToTimeline()`. Calculate duration: `endFrame = sg_cut_out - sg_cut_in`.
 5. **LUT & Placeholder Application:** Iterate through `appended_items`.
    - **Missing Shots**: If `is_missing` is True, bypass LUT application. Use `item.AddFusionComp()` to create a local Fusion composition. Generate a solid red `Background` node and a `TextPlus` node containing "NO CLIP\n[shot_code]". Connect them via a `Merge` node to `MediaOut1` to create a dynamic timeline generator (replacing the need for an external .jpg file).
+   - **TMNT2 Native OCIO LUT (Highest Priority)**: If Project is "Tmnt2", file is EXR, `ApplyLutCheck` is true, and `ImageSeqCheck` is true: bypass all other logic and apply the generated `davinciFlow/tmnt2_acescg_to_rec709.cube` 3D LUT (which perfectly bakes the complex ACEScg -> SPI_anim `.spi1d` OpenColorIO display chain into a single 65x65x65 IRIDAS `.cube` file to completely emulate the studio viewer in DaVinci).
    - If EXR and is_hero: Apply standard `exr_lut`.
    - If EXR and NOT is_hero: Apply generated B&W LUT (`TMNT2_acescg_to_vd16_bw.cube`).
    - If Proxy and NOT is_hero: Apply generic `proxy_bw.cube`.
    *(LUTs are applied silently in the background via the modern `timeline_item.GetNodeGraph().SetLUT(1, lut_path)` API to avoid forcing the UI to switch to the Color page, falling back to `item.SetLUT` for backwards compatibility).*
 
-## 6. MATHEMATICAL LUT GENERATOR (`generate_luts.py`)
-Provide a standalone script (`generate_luts.py`) that uses raw math to bake Black & White transforms.
+## 6. MATHEMATICAL LUT GENERATORS (`generate_luts.py` & `bake_tmnt2_lut.py`)
+Provide standalone python scripts that use raw math and OCIO processing to bake custom transforms:
 - For generic `proxy_bw.cube`: Generates a 33x33x33 identity cube, forcing `L = R*0.2126 + G*0.7152 + B*0.0722`.
-- For the EXR LUT: Ingests the studio's EXR LUT, computes Rec.709 Luma `L`, and writes a new `.cube` where `R = G = B = L`.
+- For the EXR B&W LUT: Ingests the studio's EXR LUT, computes Rec.709 Luma `L`, and writes a new `.cube` where `R = G = B = L`.
+- For the TMNT2 Native Display LUT (`bake_tmnt2_lut.py`): Leverages `PyOpenColorIO.Baker()` to parse the TMNT2 `config.ocio` and generate `tmnt2_acescg_to_rec709.cube`, a high-precision 65x65x65 3D LUT that mathematically squashes the `acescg` input space to the `Rec.709-Screen` display / `SPI_anim` view, bypassing the need for manual DaVinci Color Space Transform nodes.
 
 **Section: ADVANCED**
 - `AgxCheck`: Checkbox (labeled "AgX Pipeline"). If checked, it enables the Camera AgX pipeline for all imported media by dynamically applying pre-saved DaVinci Resolve stills (.drx) instead of standard LUTs.
