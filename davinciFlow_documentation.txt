@@ -112,7 +112,7 @@ When "Build Sequence" is clicked, check the active Mode:
 4. Construct `clip_info` dicts (`{"mediaPoolItem": item, "is_hero": bool, "is_missing": bool, "shot_code": str}`) for `AppendToTimeline()`. Calculate duration: `endFrame = sg_cut_out - sg_cut_in`.
 5. **LUT & Placeholder Application:** Iterate through `appended_items`.
    - **Missing Shots**: If `is_missing` is True, bypass LUT application. Use `item.AddFusionComp()` to create a local Fusion composition. Generate a solid red `Background` node and a `TextPlus` node containing "NO CLIP\n[shot_code]". Connect them via a `Merge` node to `MediaOut1` to create a dynamic timeline generator (replacing the need for an external .jpg file).
-   - **TMNT2 Pipeline**: If Project is "Tmnt2", file is EXR, and both `ImageSeqCheck` and `ApplyLutCheck` are checked: bypass standard logic and apply the `drx/tmnt2_0cio_exr.drx` node tree (containing the heavy OCIO nodes).
+   - **TMNT2 Pipeline**: If Project is "Tmnt2", file is EXR, and both `ImageSeqCheck` and `ApplyLutCheck` are checked: bypass standard logic and apply the optimized `drx/tmnt2_0cio_exr.drx` node tree (which uses a native Resolve CST to compress ACEScg to ACEScct, followed by the custom `tmnt2_acescct_to_rec709.cube` LUT to apply the look without highlight clipping or slow OCIO playback).
    - **Standard ACEScg Pipeline**: If file is EXR, Project is NOT "Tmnt2", and both `ImageSeqCheck` and `ApplyLutCheck` are checked: apply the `drx/Acescg.drx` node tree (containing standard ACES Color Space Transforms).
    - If EXR and is_hero: Apply standard `exr_lut`.
    - If EXR and NOT is_hero: Apply generated B&W LUT (`TMNT2_acescg_to_vd16_bw.cube`).
@@ -152,3 +152,27 @@ Assuming the Camera AgX DCTL expects an **ARRI LogC3 / Wide Gamut 3** working co
 **IMPORTANT WARNING FOR CROSS-PLATFORM DEPLOYMENT (WINDOWS):**
 Because the DaVinci Resolve `.drx` files encode node properties into a hexadecimal blob, absolute file paths (such as the path to your `config.ocio` file) are hardcoded into the blob and cannot be dynamically changed by this python script. 
 If you install this script on a Windows machine, the OCIO path inside `AgX_exr.drx` (which points to a Linux `/s/prodanim/...` directory) will be invalid. You must open DaVinci Resolve on the Windows machine, manually update the OCIO node with the correct Windows path to your `config.ocio` file, and re-export the `AgX_exr.drx` file into the `drx/` folder to overwrite the Linux version.
+
+---
+
+## 7. INSTALLATION GUIDE
+
+**1. Copy the Scripts & DRX Files:**
+Copy `davinciFlow.py` and the `drx/` folder to your DaVinci Resolve Fusion Scripts Utility directory:
+- Linux: `/datas/dulacd/DaVinciResolve/Fusion/Scripts/Utility/davinciFlow/`
+- Windows: `%APPDATA%\Blackmagic Design\DaVinci Resolve\Support\Fusion\Scripts\Utility\davinciFlow\`
+
+**2. Copy the TMNT2 LUT:**
+Copy the generated `tmnt2_acescct_to_rec709.cube` to your DaVinci Resolve LUT directory inside a `davinciFlow` subfolder:
+- Linux: `/datas/dulacd/DaVinciResolve/LUT/davinciFlow/`
+- Windows: `C:\ProgramData\Blackmagic Design\DaVinci Resolve\Support\LUT\davinciFlow\`
+
+**3. Setting up `tmnt2_0cio_exr.drx` for Fast Playback:**
+If you need to rebuild the `.drx` file for the TMNT2 look, create this specific node tree in the Color Page and export it as `tmnt2_0cio_exr.drx` to the plugin's `drx/` folder:
+- **Node 1: Color Space Transform**
+  - Input Color Space: `ACES (AP1)` or `ACEScg`
+  - Input Gamma: `Linear`
+  - Output Color Space: `ACES (AP1)` or `ACEScct`
+  - Output Gamma: `ACEScct`
+- **Node 2: 3D LUT**
+  - Apply the `davinciFlow/tmnt2_acescct_to_rec709.cube` 3D LUT.
