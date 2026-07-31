@@ -112,7 +112,7 @@ When "Build Sequence" is clicked, check the active Mode:
 4. Construct `clip_info` dicts (`{"mediaPoolItem": item, "is_hero": bool, "is_missing": bool, "shot_code": str}`) for `AppendToTimeline()`. Calculate duration: `endFrame = sg_cut_out - sg_cut_in`.
 5. **LUT & Placeholder Application:** Iterate through `appended_items`.
    - **Missing Shots**: If `is_missing` is True, bypass LUT application. Use `item.AddFusionComp()` to create a local Fusion composition. Generate a solid red `Background` node and a `TextPlus` node containing "NO CLIP\n[shot_code]". Connect them via a `Merge` node to `MediaOut1` to create a dynamic timeline generator (replacing the need for an external .jpg file).
-   - **TMNT2 Pipeline**: If Project is "Tmnt2" and file is EXR: bypass standard logic and apply the `drx/tmnt2_0cio_exr.drx` node tree (containing the heavy OCIO nodes).
+   - **TMNT2 Pipeline**: If Project is "Tmnt2", file is EXR, and both `ImageSeqCheck` and `ApplyLutCheck` are checked: bypass standard logic and apply the `drx/tmnt2_0cio_exr.drx` node tree (containing the heavy OCIO nodes).
    - **Standard ACEScg Pipeline**: If file is EXR, Project is NOT "Tmnt2", and both `ImageSeqCheck` and `ApplyLutCheck` are checked: apply the `drx/Acescg.drx` node tree (containing standard ACES Color Space Transforms).
    - If EXR and is_hero: Apply standard `exr_lut`.
    - If EXR and NOT is_hero: Apply generated B&W LUT (`TMNT2_acescg_to_vd16_bw.cube`).

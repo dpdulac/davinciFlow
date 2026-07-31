@@ -1159,7 +1159,7 @@ def OnBuild(ev):
                 lut_to_apply = None
                 drx_to_apply = None
 
-                if is_exr and proj_str.lower() == "tmnt2":
+                if is_exr and proj_str.lower() == "tmnt2" and use_img and use_lut:
                     # TMNT2 Native OCIO Node Pipeline
                     drx_path = os.path.join(SCRIPT_DIR, "drx", "tmnt2_0cio_exr.drx")
                     if os.path.exists(drx_path):
