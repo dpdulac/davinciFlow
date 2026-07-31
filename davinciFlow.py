@@ -1158,7 +1158,14 @@ def OnBuild(ev):
                 lut_to_apply = None
                 drx_to_apply = None
 
-                if use_agx:
+                if proj_str.lower() == "tmnt2" and is_exr:
+                    # TMNT2 Native OCIO Node Pipeline
+                    drx_path = os.path.join(SCRIPT_DIR, "drx", "tmnt2_0cio_exr.drx")
+                    if os.path.exists(drx_path):
+                        drx_to_apply = drx_path
+                    else:
+                        print(f"Warning: TMNT2 OCIO .drx file not found at {drx_path}")
+                elif use_agx:
                     # AgX Pipeline Logic using .drx files
                     script_dir = SCRIPT_DIR
                     item_name_lower = item.GetName().lower()
