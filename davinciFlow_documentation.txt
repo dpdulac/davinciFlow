@@ -153,22 +153,19 @@ Show configs in `configs/` explicitly control whether artists can activate AgX:
 - **`tmnt2.json`**: Enforces `"allow_agx": false`, guaranteeing that TMNT2 EXR sequences strictly use `tmnt2_0cio_exr.drx` and Academy SPI_anim filmic tone response without AgX interference.
 - **`default.json`**: Enforces `"allow_agx": true`, allowing standard ACEScg projects to seamlessly toggle into AgX.
 
-**Standard Color Science Setup for DRX files:**
-Assuming the Camera AgX DCTL expects an **ARRI LogC3 / Wide Gamut 3** working color space, configure your nodes as follows and export the still as a .drx file:
+**AgX EXR Color Space Transform Setup (`AgX_exr_cst.drx`)**:
+Because image stills and video proxies utilize direct 3D hardware LUTs (`agx_srgb_img.cube` and `agx_rec709_proxy.cube`), **no `.drx` files or DCTL installations are required for standard media!**
 
-- **AgX_mov_proxy.drx (Rec.709 Proxies)**
-  - Node 1: CST (Input: Rec.709/Gamma 2.4 | Output: ARRI Wide Gamut 3/ARRI LogC3)
-  - Node 2: Camera AgX DCTL
-- **AgX_img.drx (sRGB Images)**
-  - Node 1: CST (Input: sRGB/sRGB | Output: ARRI Wide Gamut 3/ARRI LogC3)
-  - Node 2: Camera AgX DCTL
-- **AgX_exr.drx (EXR Sequences)**
-  - Node 1: OCIO ColorSpace (Source: ACES - ACEScg | Target: Input - ARRI - V3 LogC (EI800) - Wide Gamut)
-  - Node 2: Camera AgX DCTL
+For scene-linear **`.exr` sequences**, `davinciFlow` assigns `drx/AgX_exr_cst.drx` to buffer dynamic range above 1.0 into log format before LUT evaluation. If you ever need to recreate `AgX_exr_cst.drx` from scratch in DaVinci Resolve:
+1. Create a single color node in the Color Page.
+2. Drag & drop the native **Color Space Transform (CST)** effect onto Node 1:
+   - **Input Color Space**: `ACEScg` (or show linear gamut) | **Input Gamma**: `Linear`
+   - **Output Color Space**: `ACEScct` | **Output Gamma**: `ACEScct` (or `ACEScct Log`)
+3. Assign `davinciFlow/agx_acescct_to_rec709.cube` to Node 1 (or Node 2).
+4. Right-click the still in your gallery and export it as `AgX_exr_cst.drx` into the script's `drx/` folder.
 
-**IMPORTANT WARNING FOR CROSS-PLATFORM DEPLOYMENT (WINDOWS):**
-Because the DaVinci Resolve `.drx` files encode node properties into a hexadecimal blob, absolute file paths (such as the path to your `config.ocio` file) are hardcoded into the blob and cannot be dynamically changed by this python script. 
-If you install this script on a Windows machine, the OCIO path inside `AgX_exr.drx` (which points to a Linux `/s/prodanim/...` directory) will be invalid. You must open DaVinci Resolve on the Windows machine, manually update the OCIO node with the correct Windows path to your `config.ocio` file, and re-export the `AgX_exr.drx` file into the `drx/` folder to overwrite the Linux version.
+**Cross-Platform Portability & Performance Advantage**:
+Because `AgX_exr_cst.drx` uses native Resolve Color Space Transforms instead of hardcoded external OCIO file paths or proprietary DCTL shaders, this single DRX operates natively across both Linux and Windows workstations at real-time GPU hardware speeds without requiring platform-specific re-exports!
 
 ---
 

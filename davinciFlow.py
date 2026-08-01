@@ -1194,15 +1194,11 @@ def OnBuild(ev):
                     if ".exr" in item_name_lower:
                         # EXRs require a CST node (ACEScg -> ACEScct) prior to agx_acescct_to_rec709.cube
                         cst_drx = agx_cfg.get("exr_drx_grade", "AgX_exr_cst.drx")
-                        legacy_drx = agx_cfg.get("exr_legacy_drx", "AgX_exr.drx")
                         cst_drx_path = os.path.join(SCRIPT_DIR, "drx", cst_drx)
-                        legacy_drx_path = os.path.join(SCRIPT_DIR, "drx", legacy_drx)
                         if os.path.exists(cst_drx_path):
                             drx_to_apply = cst_drx_path
-                        elif os.path.exists(legacy_drx_path):
-                            drx_to_apply = legacy_drx_path
                         else:
-                            print(f"Warning: AgX EXR .drx file not found at {cst_drx_path} or {legacy_drx_path}")
+                            print(f"Warning: AgX EXR CST .drx file not found at {cst_drx_path}")
                     elif any(ext in item_name_lower for ext in [".png", ".jpg", ".jpeg", ".tga", ".tiff", ".tif"]):
                         # Stills use sRGB-to-AgX 65^3 cube directly without external DCTL dependencies
                         lut_to_apply = agx_cfg.get("stills_lut", "davinciFlow/agx_srgb_img.cube")
