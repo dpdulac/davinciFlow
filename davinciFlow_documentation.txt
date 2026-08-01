@@ -215,10 +215,26 @@ For standalone DCC usage, copy `tmnt2_config_v2.ocio` and the `.ctf` files to yo
 
 **3. Setting up `tmnt2_0cio_exr.drx` for Fast Playback:**
 If you need to rebuild the `.drx` file for the TMNT2 look, create this specific node tree in the Color Page and export it as `tmnt2_0cio_exr.drx` to the plugin's `drx/` folder:
-- **Node 1: Color Space Transform**
+- **Node 1: Color Space Transform (CST)**
   - Input Color Space: `ACES (AP1)` or `ACEScg`
   - Input Gamma: `Linear`
   - Output Color Space: `ACES (AP1)` or `ACEScct`
   - Output Gamma: `ACEScct`
 - **Node 2: 3D LUT (Recommended for Real-Time Playback)**
   - Apply the `davinciFlow/tmnt2_acescct_to_rec709.cube` 3D LUT directly from the right-click LUT menu.
+
+**4. Setting up `AgX_exr_cst.drx` for Fast AgX Playback on EXRs:**
+Because EXR files are scene-linear with HDR values above 1.0, applying a LUT directly without log compression would clip high luminance highlights. To create the DCTL-free AgX powergrade for EXRs:
+1. In DaVinci Resolve, select an EXR clip and open the **Color Page**.
+2. Create two serial color nodes:
+   - **Node 1: Color Space Transform (CST)**
+     - Input Color Space: `ACES (AP1)` or `ACEScg` (depending on your scene linear render primaries)
+     - Input Gamma: `Linear`
+     - Output Color Space: `ACES (AP1)` or `ACEScct`
+     - Output Gamma: `ACEScct`
+     - Tone Mapping & Gamut Mapping: None
+   - **Node 2: 3D LUT**
+     - Right-click the node ➔ **LUT** ➔ **davinciFlow** ➔ select **`agx_acescct_to_rec709`**.
+3. Right-click the viewer screen and select **Grab Still**.
+4. In the Stills / PowerGrade Gallery, right-click the thumbnail you just created and select **Export...**.
+5. Save the file as **`AgX_exr_cst.drx`** directly into your `/datas/dulacd/gitHub/davinciFlow/drx/` folder (and make sure to copy it over to your Fusion Scripts utility folder!). When `AgxCheck` is enabled, `davinciFlow` will automatically detect and apply this optimized grade!
