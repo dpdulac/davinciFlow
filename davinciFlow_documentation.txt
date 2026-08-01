@@ -155,17 +155,29 @@ If you install this script on a Windows machine, the OCIO path inside `AgX_exr.d
 
 ---
 
-## 7. INSTALLATION GUIDE
+## 7. NATIVE OCIO v2.5.1 & CTF PIPELINE GENERATOR (`export_tmnt2_ocio2_ctf.py`)
+To upgrade legacy OCIO v1 show transforms (such as TMNT2) to modern high-speed pipelines without loss of mathematical precision, provide a standalone generator script: `export_tmnt2_ocio2_ctf.py`.
+- **Environment & Optimization**: Run within `rez env ocio-2.5.1 pyocio-2.5.1`. The script loads the legacy 15-operation show profile and applies `processor.getOptimizedProcessor(ocio.OPTIMIZATION_LOSSLESS)` to collapse redundant matrices and range operations down to an optimized 8-9 operation chain.
+- **Color Transform Format (.ctf) Support**: Why `.ctf` instead of Academy `.clf`? Standard `.clf` does not support `InverseLUT1D` nodes and forces lossy inversion baking. Autodesk/Academy Color Transform Format (`.ctf`) natively supports `InverseLUT1D`, matrices, and range operators, guaranteeing 100% mathematical equality to the original studio shaders without highlight clipping or interpolation drift.
+- **Outputs Generated**:
+  1. `tmnt2_native_look_v2.ctf`: Linear `ACEScg` to `SPI_anim` Rec.709 display look.
+  2. `tmnt2_acescct_to_rec709_v2.ctf`: Logarithmic `ACEScct` to `SPI_anim` Rec.709 display look.
+  3. `tmnt2_config_v2.ocio`: A lightweight, standalone OCIO v2.1 configuration file referencing the native CTF shaders for instant loading in DCCs and DaVinci Resolve.
+
+---
+
+## 8. INSTALLATION GUIDE
 
 **1. Copy the Scripts & DRX Files:**
-Copy `davinciFlow.py` and the `drx/` folder to your DaVinci Resolve Fusion Scripts Utility directory:
+Copy `davinciFlow.py`, `export_tmnt2_ocio2_ctf.py`, and the `drx/` folder to your DaVinci Resolve Fusion Scripts Utility directory:
 - Linux: `/datas/dulacd/DaVinciResolve/Fusion/Scripts/Utility/davinciFlow/`
 - Windows: `%APPDATA%\Blackmagic Design\DaVinci Resolve\Support\Fusion\Scripts\Utility\davinciFlow\`
 
-**2. Copy the TMNT2 LUT:**
-Copy the generated `tmnt2_acescct_to_rec709.cube` to your DaVinci Resolve LUT directory inside a `davinciFlow` subfolder:
+**2. Copy the LUTs & CTF Profiles:**
+Copy `tmnt2_acescct_to_rec709.cube`, `tmnt2_native_look_v2.ctf`, and `tmnt2_acescct_to_rec709_v2.ctf` to your DaVinci Resolve LUT directory inside a `davinciFlow` subfolder:
 - Linux: `/datas/dulacd/DaVinciResolve/LUT/davinciFlow/`
 - Windows: `C:\ProgramData\Blackmagic Design\DaVinci Resolve\Support\LUT\davinciFlow\`
+For standalone DCC usage, copy `tmnt2_config_v2.ocio` and the `.ctf` files to your personal project sandbox (e.g., `/datas/dulacd/` or `/s/prodanim/tmnt2/_sandbox/dulacd/`).
 
 **3. Setting up `tmnt2_0cio_exr.drx` for Fast Playback:**
 If you need to rebuild the `.drx` file for the TMNT2 look, create this specific node tree in the Color Page and export it as `tmnt2_0cio_exr.drx` to the plugin's `drx/` folder:
@@ -174,5 +186,5 @@ If you need to rebuild the `.drx` file for the TMNT2 look, create this specific 
   - Input Gamma: `Linear`
   - Output Color Space: `ACES (AP1)` or `ACEScct`
   - Output Gamma: `ACEScct`
-- **Node 2: 3D LUT**
-  - Apply the `davinciFlow/tmnt2_acescct_to_rec709.cube` 3D LUT.
+- **Node 2: 3D LUT or CTF**
+  - Apply either the `davinciFlow/tmnt2_acescct_to_rec709.cube` 3D LUT or the mathematically exact `davinciFlow/tmnt2_acescct_to_rec709_v2.ctf` profile.

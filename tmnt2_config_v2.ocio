@@ -1,0 +1,50 @@
+ocio_profile_version: 2.1
+
+search_path: .
+strictparsing: false
+luma: [0.2126, 0.7152, 0.0722]
+
+roles:
+  default: ACEScg
+  scene_linear: ACEScg
+  rendering: ACEScg
+  color_picking: ACEScg
+  texture_paint: ACEScg
+  data: Raw
+
+displays:
+  Rec.709-Screen:
+    - !<View> {name: SPI_anim, colorspace: ACEScg, looks: TMNT2_Look}
+
+colorspaces:
+  - !<ColorSpace>
+    name: ACEScg
+    family: ACES
+    equalitygroup: ""
+    bitdepth: 32f
+    description: ACEScg scene-linear working space
+    isdata: false
+    encoding: scene-linear
+
+  - !<ColorSpace>
+    name: ACEScct
+    family: ACES
+    equalitygroup: ""
+    bitdepth: 32f
+    description: ACEScct logarithmic working space
+    isdata: false
+    encoding: log
+
+  - !<ColorSpace>
+    name: Raw
+    family: Utility
+    equalitygroup: ""
+    bitdepth: 32f
+    description: Raw data
+    isdata: true
+
+looks:
+  - !<Look>
+    name: TMNT2_Look
+    process_space: ACEScg
+    transform: !<FileTransform> {src: tmnt2_native_look_v2.ctf, interpolation: linear}
