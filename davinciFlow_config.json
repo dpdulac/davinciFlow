@@ -3,7 +3,8 @@
     "script_name":  "resolveTest",
     "script_key":  "vblervsd(ubdZzxsxtvo5jimv",
     "projects":  [
-                     "Tmnt2"
+                     "Tmnt2",
+                     "Bsl"
                  ],
     "tasks":  [
                   "delivery",

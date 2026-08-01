@@ -48,7 +48,7 @@ FLOW_URL = "https://mikrosanim.priv.shotgunstudio.com/"
 SCRIPT_NAME = "resolveTest"
 SCRIPT_KEY = "vblervsd(ubdZzxsxtvo5jimv"
 PROXY_DOWNLOAD_PATH = r"T:\flowDavinci" if sys.platform == "win32" else "/datas/dulacd/tmp/flowDavinci"
-PROJECTS = ["Tmnt2"]
+PROJECTS = ["Tmnt2", "Bsl"]
 MASTER_TASKS = [
     "delivery", "confo_render", "compo_comp", "compo_precomp",
     "light_precomp", "anim_main", "layout_base", "previz_base", "editing_edt"
