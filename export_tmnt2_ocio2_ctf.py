@@ -150,7 +150,7 @@ looks:
     print("\n[5] Deploying copies to user directories...")
     destinations = [
         "/datas/dulacd",
-        "/s/prodanim/tmnt2/_sandbox/dulacd",
+        "/s/prodanim/studio/_sandbox/dulacd",
         "/datas/dulacd/DaVinciResolve/LUT/davinciFlow"
     ]
 

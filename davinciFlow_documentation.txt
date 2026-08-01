@@ -174,7 +174,7 @@ To load the `.ctf` look in Resolve 21:
 2. Under **Resolve FX Color**, drag and drop **OCIO Display** (or **OCIO ColorSpace**) onto your color node.
 3. In the Inspector / Settings panel:
    - Change **OCIO Config** from Default to **Custom File...** (or **FromFile**).
-   - Browse and select the standalone config file: `/datas/dulacd/tmnt2_config_v2.ocio` (or `/s/prodanim/tmnt2/_sandbox/dulacd/tmnt2_config_v2.ocio`).
+   - Browse and select the standalone config file: `/s/prodanim/studio/_sandbox/dulacd/tmnt2_config_v2.ocio` (or `/datas/dulacd/tmnt2_config_v2.ocio`).
    - Set **Input Color Space**: `ACEScg` (for EXR) or `ACEScct` (for Log).
    - Set **Display Device**: `Rec.709-Screen`.
    - Set **View Transform**: `SPI_anim`.
@@ -196,7 +196,14 @@ To democratize AgX grading across the studio without relying on external DCTL fi
   1. `agx_acescct_to_rec709.cube` & `.ctf` (for scene-linear EXRs via log buffering).
   2. `agx_rec709_proxy.cube` & `.ctf` (for display-referred video proxies).
   3. `agx_srgb_img.cube` & `.ctf` (for sRGB textures and stills).
-  4. `agx_config_v2.ocio`: A standalone OCIO v2.1 profile deployed to user sandboxes (`/datas/dulacd/` and `/s/prodanim/tmnt2/_sandbox/dulacd/`) so lighting and compositing artists in Nuke/Houdini/Katana can access identical AgX color responses.
+  4. `agx_config_v2.ocio`: A standalone OCIO v2.1 profile deployed to user sandboxes (`/datas/dulacd/` and the centralized studio sandbox `/s/prodanim/studio/_sandbox/dulacd/`) so lighting and compositing artists in Nuke/Houdini/Katana can access identical AgX color responses across all studio shows.
+
+### Centralized Studio OCIO v2 Repository (`/s/prodanim/studio/_sandbox/dulacd`)
+All generated standalone OCIO v2 configurations (`tmnt2_config_v2.ocio`, `agx_config_v2.ocio`) and native Color Transform Format shaders (`.ctf`) are globally hosted in **`/s/prodanim/studio/_sandbox/dulacd/`** rather than show-specific production sandboxes (such as `tmnt2/_sandbox`).
+- **Why Centralize in Studio Sandbox?**: Placing color configurations in the global `studio/` sandbox guarantees universal accessibility across diverse studio productions, lighting workflows, and visual effects applications (Nuke, Houdini, Katana, Blender, Renderers). Artists on any show can reference these unified OCIO profiles without encountering show-specific storage access bottlenecks or duplicating files across project hierarchies.
+- **Repository Contents at `/s/prodanim/studio/_sandbox/dulacd/`**:
+  - **AgX Suite**: `agx_config_v2.ocio`, `agx_acescct_to_rec709.ctf`, `agx_rec709_proxy.ctf`, `agx_srgb_img.ctf`, and associated `.cube` files.
+  - **TMNT2 Suite**: `tmnt2_config_v2.ocio`, `tmnt2_native_look_v2.ctf`, `tmnt2_acescct_to_rec709_v2.ctf`, and associated `.cube` files.
 
 ---
 
@@ -211,7 +218,7 @@ Copy `davinciFlow.py`, `export_tmnt2_ocio2_ctf.py`, and the `drx/` folder to you
 Copy `tmnt2_acescct_to_rec709.cube`, `tmnt2_native_look_v2.ctf`, and `tmnt2_acescct_to_rec709_v2.ctf` to your DaVinci Resolve LUT directory inside a `davinciFlow` subfolder:
 - Linux: `/datas/dulacd/DaVinciResolve/LUT/davinciFlow/`
 - Windows: `C:\ProgramData\Blackmagic Design\DaVinci Resolve\Support\LUT\davinciFlow\`
-For standalone DCC usage, copy `tmnt2_config_v2.ocio` and the `.ctf` files to your personal project sandbox (e.g., `/datas/dulacd/` or `/s/prodanim/tmnt2/_sandbox/dulacd/`).
+For standalone DCC usage, copy `tmnt2_config_v2.ocio` and the `.ctf` files to the centralized studio sandbox (`/s/prodanim/studio/_sandbox/dulacd/`) or your workstation root (`/datas/dulacd/`).
 
 **3. Setting up `tmnt2_0cio_exr.drx` for Fast Playback:**
 If you need to rebuild the `.drx` file for the TMNT2 look, create this specific node tree in the Color Page and export it as `tmnt2_0cio_exr.drx` to the plugin's `drx/` folder:

@@ -272,7 +272,7 @@ def main():
     print("\n---> Deploying AgX pipeline profiles to target locations...")
     destinations = [
         "/datas/dulacd",
-        "/s/prodanim/tmnt2/_sandbox/dulacd",
+        "/s/prodanim/studio/_sandbox/dulacd",
         "/datas/dulacd/DaVinciResolve/LUT/davinciFlow"
     ]
 
