@@ -125,7 +125,10 @@ Provide a standalone script (`generate_luts.py`) that uses raw math to bake Blac
 - For the EXR LUT: Ingests the studio's EXR LUT, computes Rec.709 Luma `L`, and writes a new `.cube` where `R = G = B = L`.
 
 **Section: ADVANCED**
-- `AgxCheck`: Checkbox (labeled "AgX Pipeline"). If checked, it enables the Camera AgX pipeline for all imported media by dynamically applying pre-saved DaVinci Resolve stills (.drx) instead of standard LUTs.
+- `AgxCheck`: Checkbox (labeled "AgX Pipeline"). If checked, it enables the high-speed 3-Tier AgX color science pipeline across all imported media. Instead of relying on legacy external DCTL files or slow OCIO evaluation nodes, `davinciFlow` automatically assigns custom-baked 65x65x65 3D LUTs directly via `SetLUT()`:
+  - **Video Proxies (`.mov`, `.mp4`, DNxHD)**: Applies `davinciFlow/agx_rec709_proxy.cube` (converting Rec.709 video directly to AgX filmic tone response).
+  - **Image Stills (`.png`, `.jpg`, `.tga`)**: Applies `davinciFlow/agx_srgb_img.cube` (converting sRGB gamma directly to AgX filmic tone response).
+  - **EXR Sequences (`.exr`)**: Applies `drx/AgX_exr_cst.drx` (a streamlined Color Space Transform converting ACEScg Linear ➔ ACEScct Log, followed by `agx_acescct_to_rec709.cube`).
 - `CleanCacheBtn`: Button to clear the MP4 proxy cache directory.
 
 ## AgX Pipeline Configuration (.drx files)
@@ -184,6 +187,16 @@ When testing timeline performance in DaVinci Resolve, you will notice that using
 **Industry Standard Recommendation:**
 - **For DaVinci Resolve (Real-Time Review & Editorial)**: Always use the **`CST (ACEScg ➔ ACEScct)` + `tmnt2_acescct_to_rec709.cube`** workflow (automatically applied by `davinciFlow` via `drx/tmnt2_0cio_exr.drx`). Converting scene-linear EXRs into log first preserves >1.0 highlight dynamic range without clipping while delivering smooth real-time 24fps/30fps playback.
 - **For DCCs & Compositing (Nuke / Katana / Houdini / Arnold)**: Use the **`tmnt2_config_v2.ocio` and `.ctf` shaders**. Lighting and compositing software does not rely on real-time editorial playback; instead, they require 100% mathematically exact float32 calculations without table interpolation tolerances.
+
+### Standalone AgX Color Science Pipeline (`export_agx_pipeline.py`)
+To democratize AgX grading across the studio without relying on external DCTL files or system-wide OCIO installations, we provide `export_agx_pipeline.py`.
+- **Mathematical Architecture**: Implements industry-standard AgX (by Troy Sobotka) directly in Python and PyOpenColorIO 2.5.1 using vector math and NumPy. It handles chromaticity rotation to AgX inset primaries, log encoding (-10.0 to +6.5 EV), and applies the smooth AgX Punchy filmic tone mapping curve.
+- **Why Eliminate DCTLs?**: Custom DaVinci DCTL shaders often fail across different OS platforms (Linux vs Windows) or when external studio files are missing on local disk. Baked 65x65x65 3D LUTs run natively on Resolve's hardware GPU engine at zero computational overhead and require zero external plugins.
+- **Outputs Generated & Deployed**:
+  1. `agx_acescct_to_rec709.cube` & `.ctf` (for scene-linear EXRs via log buffering).
+  2. `agx_rec709_proxy.cube` & `.ctf` (for display-referred video proxies).
+  3. `agx_srgb_img.cube` & `.ctf` (for sRGB textures and stills).
+  4. `agx_config_v2.ocio`: A standalone OCIO v2.1 profile deployed to user sandboxes (`/datas/dulacd/` and `/s/prodanim/tmnt2/_sandbox/dulacd/`) so lighting and compositing artists in Nuke/Houdini/Katana can access identical AgX color responses.
 
 ---
 

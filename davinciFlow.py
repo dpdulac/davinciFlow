@@ -1188,21 +1188,27 @@ def OnBuild(ev):
                     else:
                         print(f"Warning: Project DRX file not found at {drx_path}")
                 elif use_agx:
-                    # AgX Pipeline Logic using .drx files
-                    script_dir = SCRIPT_DIR
+                    # AgX Pipeline Logic: Using optimized 3D LUTs directly for proxies and stills
                     item_name_lower = item.GetName().lower()
                     
                     if ".exr" in item_name_lower:
-                        drx_path = os.path.join(script_dir, "drx", "AgX_exr.drx")
+                        # EXRs require a CST node (ACEScg -> ACEScct) prior to agx_acescct_to_rec709.cube
+                        cst_drx_path = os.path.join(SCRIPT_DIR, "drx", "AgX_exr_cst.drx")
+                        legacy_drx_path = os.path.join(SCRIPT_DIR, "drx", "AgX_exr.drx")
+                        if os.path.exists(cst_drx_path):
+                            drx_to_apply = cst_drx_path
+                        elif os.path.exists(legacy_drx_path):
+                            drx_to_apply = legacy_drx_path
+                        else:
+                            print(f"Warning: AgX EXR .drx file not found at {cst_drx_path} or {legacy_drx_path}")
                     elif any(ext in item_name_lower for ext in [".png", ".jpg", ".jpeg", ".tga", ".tiff", ".tif"]):
-                        drx_path = os.path.join(script_dir, "drx", "AgX_img.drx")
+                        # Stills use sRGB-to-AgX 65^3 cube directly without external DCTL dependencies
+                        lut_to_apply = "davinciFlow/agx_srgb_img.cube"
+                        print(f"Assigning AgX Stills LUT: {lut_to_apply}")
                     else:
-                        drx_path = os.path.join(script_dir, "drx", "AgX_mov_proxy.drx")
-                    
-                    if os.path.exists(drx_path):
-                        drx_to_apply = drx_path
-                    else:
-                        print(f"Warning: AgX .drx file not found at {drx_path}")
+                        # Video proxies (.mov, .mp4, DNxHD) use Rec709-to-AgX 65^3 cube directly
+                        lut_to_apply = "davinciFlow/agx_rec709_proxy.cube"
+                        print(f"Assigning AgX Proxy LUT: {lut_to_apply}")
                 else:
                     # Standard LUT Pipeline Logic
                     if is_exr:
