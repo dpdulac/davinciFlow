@@ -81,9 +81,11 @@ if os.path.exists(CONFIGS_DIR):
                 with open(os.path.join(CONFIGS_DIR, f_name), 'r') as cf:
                     cfg = json.load(cf)
                     display_name = cfg.get("display_name")
+                    base_key = os.path.splitext(f_name)[0].lower()
+                    SHOW_CONFIGS[base_key] = cfg
                     if display_name:
                         SHOW_CONFIGS[display_name.lower()] = cfg
-                        if display_name not in PROJECTS and display_name.lower() != "default":
+                        if not cfg.get("is_pipeline_preset", False) and display_name not in PROJECTS and display_name.lower() != "default":
                             PROJECTS.append(display_name)
             except Exception as e:
                 print(f"Failed to load show config {f_name}: {e}")
@@ -1176,15 +1178,25 @@ def OnBuild(ev):
                 lut_to_apply = None
                 drx_to_apply = None
 
-                if use_agx:
-                    # AgX Pipeline Logic (Overrides & cancels all show specifications e.g. TMNT2):
-                    # Using optimized 3D LUTs directly for proxies and stills
+                proj_key = proj_str.lower()
+                active_config = SHOW_CONFIGS.get(proj_key, SHOW_CONFIGS.get("default", {}))
+                allow_agx = active_config.get("allow_agx", True)
+                apply_agx = use_agx and allow_agx
+
+                if use_agx and not allow_agx:
+                    print(f"Notice: AgX Pipeline ignored for clip '{item.GetName()}' because project '{proj_str}' forbids AgX.")
+
+                if apply_agx:
+                    # AgX Pipeline Logic (configured dynamically via configs/agx.json):
+                    agx_cfg = SHOW_CONFIGS.get("agx", {})
                     item_name_lower = item.GetName().lower()
                     
                     if ".exr" in item_name_lower:
                         # EXRs require a CST node (ACEScg -> ACEScct) prior to agx_acescct_to_rec709.cube
-                        cst_drx_path = os.path.join(SCRIPT_DIR, "drx", "AgX_exr_cst.drx")
-                        legacy_drx_path = os.path.join(SCRIPT_DIR, "drx", "AgX_exr.drx")
+                        cst_drx = agx_cfg.get("exr_drx_grade", "AgX_exr_cst.drx")
+                        legacy_drx = agx_cfg.get("exr_legacy_drx", "AgX_exr.drx")
+                        cst_drx_path = os.path.join(SCRIPT_DIR, "drx", cst_drx)
+                        legacy_drx_path = os.path.join(SCRIPT_DIR, "drx", legacy_drx)
                         if os.path.exists(cst_drx_path):
                             drx_to_apply = cst_drx_path
                         elif os.path.exists(legacy_drx_path):
@@ -1193,16 +1205,14 @@ def OnBuild(ev):
                             print(f"Warning: AgX EXR .drx file not found at {cst_drx_path} or {legacy_drx_path}")
                     elif any(ext in item_name_lower for ext in [".png", ".jpg", ".jpeg", ".tga", ".tiff", ".tif"]):
                         # Stills use sRGB-to-AgX 65^3 cube directly without external DCTL dependencies
-                        lut_to_apply = "davinciFlow/agx_srgb_img.cube"
+                        lut_to_apply = agx_cfg.get("stills_lut", "davinciFlow/agx_srgb_img.cube")
                         print(f"Assigning AgX Stills LUT: {lut_to_apply}")
                     else:
                         # Video proxies (.mov, .mp4, DNxHD) use Rec709-to-AgX 65^3 cube directly
-                        lut_to_apply = "davinciFlow/agx_rec709_proxy.cube"
+                        lut_to_apply = agx_cfg.get("proxy_lut", "davinciFlow/agx_rec709_proxy.cube")
                         print(f"Assigning AgX Proxy LUT: {lut_to_apply}")
                 elif is_exr and use_img and use_lut:
                     # Dynamic Project Node Pipeline (e.g. TMNT2)
-                    proj_key = proj_str.lower()
-                    active_config = SHOW_CONFIGS.get(proj_key, SHOW_CONFIGS.get("default", {}))
                     drx_file = active_config.get("exr_drx_grade", "Acescg.drx")
                     drx_path = os.path.join(SCRIPT_DIR, "drx", drx_file)
                     
@@ -1422,6 +1432,29 @@ def OnCleanCache(ev):
     else:
         print("Cache directory does not exist yet.")
 
+def OnProjectChange(ev):
+    proj_name = items["ProjectCombo"].CurrentText
+    proj_str = proj_name.lower() if proj_name else "default"
+    cfg = SHOW_CONFIGS.get(proj_str, SHOW_CONFIGS.get(proj_name, SHOW_CONFIGS.get("default", {})))
+    allow_agx = cfg.get("allow_agx", True)
+    if not allow_agx:
+        items["AgxCheck"].Checked = False
+        items["AgxCheck"].Enabled = False
+        items["AgxCheck"].ToolTip = f"AgX Pipeline is disabled by show specification ({proj_name})"
+    else:
+        items["AgxCheck"].Enabled = True
+        items["AgxCheck"].ToolTip = "Apply AgX color pipeline instead of standard LUTs"
+        
+    if ev is not None and proj_name:
+        try:
+            items["SeqCombo"].Clear()
+            new_seqs = get_sequences(proj_name)
+            for s in new_seqs:
+                items["SeqCombo"].AddItem(s)
+        except Exception as err:
+            log(f"Error updating sequences for project {proj_name}: {err}", 2)
+
+win.On.ProjectCombo.CurrentIndexChanged = OnProjectChange
 win.On.CleanCacheBtn.Clicked = OnCleanCache
 win.On.BuildBtn.Clicked = OnBuild
 win.On.CancelBtn.Clicked = OnCancel
@@ -1444,6 +1477,9 @@ win.On.AdvancedHeaderBtn.Clicked = create_toggle_handler("AdvancedGrp", "Advance
 # Initialize AdvancedGrp state to hidden
 items["AdvancedGrp"].Hide()
 items["AdvancedHeaderBtn"].Text = "▶ ADVANCED"
+
+# Initialize UI state based on default selected project
+OnProjectChange(None)
 
 # ==========================================
 # EXECUTE UI

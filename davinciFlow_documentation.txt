@@ -125,16 +125,33 @@ Provide a standalone script (`generate_luts.py`) that uses raw math to bake Blac
 - For the EXR LUT: Ingests the studio's EXR LUT, computes Rec.709 Luma `L`, and writes a new `.cube` where `R = G = B = L`.
 
 **Section: ADVANCED**
-- `AgxCheck`: Checkbox (labeled "AgX Pipeline"). If checked, it enables the high-speed 3-Tier AgX color science pipeline across all imported media. **Important:** Enabling AgX has absolute priority and completely cancels/overrides all show-specific specifications (e.g., TMNT2 look or project DRX configs).
+- `AgxCheck`: Checkbox (labeled "AgX Pipeline"). If checked, it enables the high-speed 3-Tier AgX color science pipeline across all imported media. 
+  - **Show Config Override & Lockout Rules**: If a project's configuration (such as TMNT2 in `configs/tmnt2.json`) defines `"allow_agx": false`, AgX is completely prohibited for that show. Selecting "Tmnt2" in the Project dropdown dynamically disables and unchecks the "AgX Pipeline" checkbox to prevent artists from misapplying AgX to shows with locked custom color science.
 - `CleanCacheBtn`: Button to clear the MP4 proxy cache directory.
 
-## AgX Pipeline Configuration (Direct 3D LUTs & EXR CST)
-In earlier versions of `davinciFlow`, AgX required cumbersome DCTL PowerGrades (.drx) across all media types. We have transitioned to an ultra-fast 3-Tier hardware LUT architecture:
+## AgX Pipeline Configuration (`configs/agx.json` & Direct LUTs)
+AgX parameters and color profile assignments are dynamically configured via a dedicated system profile at **`configs/agx.json`**:
+```json
+{
+    "display_name": "AgX",
+    "is_pipeline_preset": true,
+    "exr_drx_grade": "AgX_exr_cst.drx",
+    "stills_lut": "davinciFlow/agx_srgb_img.cube",
+    "proxy_lut": "davinciFlow/agx_rec709_proxy.cube",
+    "allow_agx": true
+}
+```
+By marking `"is_pipeline_preset": true`, `davinciFlow` loads these color parameters without polluting the main ShotGrid project dropdown.
 
-When `AgxCheck` is enabled, any show-specific rules (such as TMNT2) are immediately canceled, and media is formatted using three dedicated pathways:
+When `AgxCheck` is enabled on a permitted show, media is formatted using three high-speed pathways defined in `configs/agx.json`:
 1. **Image Stills (`.jpg`, `.jpeg`, `.png`, `.tga`, `.tiff`)**: Directly assigns `davinciFlow/agx_srgb_img.cube` via `SetLUT()`. No `.drx` or DCTL is loaded!
 2. **Video Proxies (`.mov`, `.mp4`, DNxHD, MXF)**: Directly assigns `davinciFlow/agx_rec709_proxy.cube` via `SetLUT()`. No `.drx` or DCTL is loaded!
 3. **EXR Sequences (`.exr`)**: Applies `drx/AgX_exr_cst.drx` (a native Color Space Transform compressing scene-linear ACEScg into log ACEScct, paired directly with `agx_acescct_to_rec709.cube`). This prevents HDR highlight clipping above 1.0 while running at full hardware GPU speed.
+
+**Show Color Science Protection (`allow_agx`)**:
+Show configs in `configs/` explicitly control whether artists can activate AgX:
+- **`tmnt2.json`**: Enforces `"allow_agx": false`, guaranteeing that TMNT2 EXR sequences strictly use `tmnt2_0cio_exr.drx` and Academy SPI_anim filmic tone response without AgX interference.
+- **`default.json`**: Enforces `"allow_agx": true`, allowing standard ACEScg projects to seamlessly toggle into AgX.
 
 **Standard Color Science Setup for DRX files:**
 Assuming the Camera AgX DCTL expects an **ARRI LogC3 / Wide Gamut 3** working color space, configure your nodes as follows and export the still as a .drx file:

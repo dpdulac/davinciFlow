@@ -1,0 +1,9 @@
+{
+    "display_name": "AgX",
+    "is_pipeline_preset": true,
+    "exr_drx_grade": "AgX_exr_cst.drx",
+    "exr_legacy_drx": "AgX_exr.drx",
+    "stills_lut": "davinciFlow/agx_srgb_img.cube",
+    "proxy_lut": "davinciFlow/agx_rec709_proxy.cube",
+    "allow_agx": true
+}
