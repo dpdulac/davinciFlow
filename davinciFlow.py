@@ -1176,19 +1176,9 @@ def OnBuild(ev):
                 lut_to_apply = None
                 drx_to_apply = None
 
-                if is_exr and use_img and use_lut:
-                    # Dynamic Project Node Pipeline
-                    proj_key = proj_str.lower()
-                    active_config = SHOW_CONFIGS.get(proj_key, SHOW_CONFIGS.get("default", {}))
-                    drx_file = active_config.get("exr_drx_grade", "Acescg.drx")
-                    drx_path = os.path.join(SCRIPT_DIR, "drx", drx_file)
-                    
-                    if os.path.exists(drx_path):
-                        drx_to_apply = drx_path
-                    else:
-                        print(f"Warning: Project DRX file not found at {drx_path}")
-                elif use_agx:
-                    # AgX Pipeline Logic: Using optimized 3D LUTs directly for proxies and stills
+                if use_agx:
+                    # AgX Pipeline Logic (Overrides & cancels all show specifications e.g. TMNT2):
+                    # Using optimized 3D LUTs directly for proxies and stills
                     item_name_lower = item.GetName().lower()
                     
                     if ".exr" in item_name_lower:
@@ -1209,6 +1199,17 @@ def OnBuild(ev):
                         # Video proxies (.mov, .mp4, DNxHD) use Rec709-to-AgX 65^3 cube directly
                         lut_to_apply = "davinciFlow/agx_rec709_proxy.cube"
                         print(f"Assigning AgX Proxy LUT: {lut_to_apply}")
+                elif is_exr and use_img and use_lut:
+                    # Dynamic Project Node Pipeline (e.g. TMNT2)
+                    proj_key = proj_str.lower()
+                    active_config = SHOW_CONFIGS.get(proj_key, SHOW_CONFIGS.get("default", {}))
+                    drx_file = active_config.get("exr_drx_grade", "Acescg.drx")
+                    drx_path = os.path.join(SCRIPT_DIR, "drx", drx_file)
+                    
+                    if os.path.exists(drx_path):
+                        drx_to_apply = drx_path
+                    else:
+                        print(f"Warning: Project DRX file not found at {drx_path}")
                 else:
                     # Standard LUT Pipeline Logic
                     if is_exr:

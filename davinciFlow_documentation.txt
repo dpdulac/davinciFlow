@@ -125,19 +125,16 @@ Provide a standalone script (`generate_luts.py`) that uses raw math to bake Blac
 - For the EXR LUT: Ingests the studio's EXR LUT, computes Rec.709 Luma `L`, and writes a new `.cube` where `R = G = B = L`.
 
 **Section: ADVANCED**
-- `AgxCheck`: Checkbox (labeled "AgX Pipeline"). If checked, it enables the high-speed 3-Tier AgX color science pipeline across all imported media. Instead of relying on legacy external DCTL files or slow OCIO evaluation nodes, `davinciFlow` automatically assigns custom-baked 65x65x65 3D LUTs directly via `SetLUT()`:
-  - **Video Proxies (`.mov`, `.mp4`, DNxHD)**: Applies `davinciFlow/agx_rec709_proxy.cube` (converting Rec.709 video directly to AgX filmic tone response).
-  - **Image Stills (`.png`, `.jpg`, `.tga`)**: Applies `davinciFlow/agx_srgb_img.cube` (converting sRGB gamma directly to AgX filmic tone response).
-  - **EXR Sequences (`.exr`)**: Applies `drx/AgX_exr_cst.drx` (a streamlined Color Space Transform converting ACEScg Linear ➔ ACEScct Log, followed by `agx_acescct_to_rec709.cube`).
+- `AgxCheck`: Checkbox (labeled "AgX Pipeline"). If checked, it enables the high-speed 3-Tier AgX color science pipeline across all imported media. **Important:** Enabling AgX has absolute priority and completely cancels/overrides all show-specific specifications (e.g., TMNT2 look or project DRX configs).
 - `CleanCacheBtn`: Button to clear the MP4 proxy cache directory.
 
-## AgX Pipeline Configuration (.drx files)
-Due to DaVinci Resolve Scripting API limitations, the script cannot programmatically generate Color Space Transform (CST) and DCTL nodes on the fly. To support the Camera AgX workflow, the script relies on pre-saved DaVinci PowerGrades (.drx files) placed in the `drx/` subdirectory.
+## AgX Pipeline Configuration (Direct 3D LUTs & EXR CST)
+In earlier versions of `davinciFlow`, AgX required cumbersome DCTL PowerGrades (.drx) across all media types. We have transitioned to an ultra-fast 3-Tier hardware LUT architecture:
 
-When `AgxCheck` is enabled, the script dynamically applies one of three node trees depending on the media type:
-1. `drx/AgX_mov_proxy.drx`: Applied to standard video proxies (.mov, .mp4, DNxHD, etc.)
-2. `drx/AgX_img.drx`: Applied to standard image formats (.png, .jpg, .tga)
-3. `drx/AgX_exr.drx`: Applied to .exr files.
+When `AgxCheck` is enabled, any show-specific rules (such as TMNT2) are immediately canceled, and media is formatted using three dedicated pathways:
+1. **Image Stills (`.jpg`, `.jpeg`, `.png`, `.tga`, `.tiff`)**: Directly assigns `davinciFlow/agx_srgb_img.cube` via `SetLUT()`. No `.drx` or DCTL is loaded!
+2. **Video Proxies (`.mov`, `.mp4`, DNxHD, MXF)**: Directly assigns `davinciFlow/agx_rec709_proxy.cube` via `SetLUT()`. No `.drx` or DCTL is loaded!
+3. **EXR Sequences (`.exr`)**: Applies `drx/AgX_exr_cst.drx` (a native Color Space Transform compressing scene-linear ACEScg into log ACEScct, paired directly with `agx_acescct_to_rec709.cube`). This prevents HDR highlight clipping above 1.0 while running at full hardware GPU speed.
 
 **Standard Color Science Setup for DRX files:**
 Assuming the Camera AgX DCTL expects an **ARRI LogC3 / Wide Gamut 3** working color space, configure your nodes as follows and export the still as a .drx file:
