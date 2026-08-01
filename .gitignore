@@ -1,0 +1,15 @@
+# Logs
+*.log
+davinciFlow.log
+
+# Caches and proxies
+flowDavinci/
+tmp/
+*.mp4
+*.jpg
+*.mov
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class

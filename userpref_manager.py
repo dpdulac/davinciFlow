@@ -11,7 +11,17 @@ try:
 except NameError:
     _dir = os.path.dirname(os.path.abspath(sys.argv[0]))
 
-davinci_dir = r"C:\ProgramData\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility\davinciFlow"
+if sys.platform == "win32":
+    davinci_dir = r"C:\ProgramData\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility\davinciFlow"
+else:
+    davinci_dir = os.path.expanduser("~/.local/share/DaVinciResolve/Fusion/Scripts/Utility/davinciFlow")
+    custom_linux_path = "/datas/dulacd/DaVinciResolve/Fusion/Scripts/Utility/davinciFlow"
+    if not os.path.exists(davinci_dir):
+        if os.path.exists(custom_linux_path):
+            davinci_dir = custom_linux_path
+        elif os.path.exists("/opt/resolve/Fusion/Scripts/Utility/davinciFlow"):
+            davinci_dir = "/opt/resolve/Fusion/Scripts/Utility/davinciFlow"
+
 if os.path.exists(davinci_dir):
     CONFIG_PATH = os.path.join(davinci_dir, "davinciFlow_config.json")
 else:
@@ -69,8 +79,11 @@ class UserPrefManager(QMainWindow):
         main_layout.addLayout(task_layout)
         
         # Current Task Sequence
-        main_layout.addWidget(QLabel("Current Task Sequence:"))
+        main_layout.addWidget(QLabel("Current Task Sequence: (Drag to reorder, Right-click to remove)"))
         self.task_list = QListWidget()
+        self.task_list.setDragDropMode(QListWidget.InternalMove)
+        self.task_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.task_list.customContextMenuRequested.connect(self.remove_task_on_right_click)
         main_layout.addWidget(self.task_list)
         
         # Save Button
@@ -123,6 +136,11 @@ class UserPrefManager(QMainWindow):
                 return
                 
         self.task_list.addItem(task)
+        
+    def remove_task_on_right_click(self, pos):
+        item = self.task_list.itemAt(pos)
+        if item:
+            self.task_list.takeItem(self.task_list.row(item))
         
     def save_preset(self):
         preset_name = self.preset_name_input.text().strip()

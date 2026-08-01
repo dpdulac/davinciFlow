@@ -8,13 +8,13 @@
 Write a Python 3 script named `davinciFlow.py` that bridges ShotGrid (Flow) and DaVinci Resolve. The script must query ShotGrid for the latest (or historical) media files for a specific sequence of shots or a direct Playlist, download missing proxies, and assemble them chronologically into a DaVinci Resolve timeline using the `DaVinciResolveScript` and `fusion.UIManager` APIs.
 
 ## 1. CONFIGURATION, AUTHENTICATION & DEPENDENCIES
-The script must authenticate with ShotGrid via `shotgun_api3`.
+The script must authenticate with ShotGrid via `shotgun_api3`. On Linux, it dynamically appends `/s/apps/packages/mikros/shotgunPythonApi/3.3.1` to `sys.path` to ensure the module can be imported.
 It requires `PyOpenColorIO` (opencolorio) for LUT mathematical processing and generation.
 It should fall back to default hardcoded credentials, but primarily attempt to load them from `davinciFlow_config.json`:
 - `flow_url` (default: "https://mikrosanim.priv.shotgunstudio.com/")
 - `script_name` (default: "resolveTest")
 - `script_key` (default: "vblervsd(ubdZzxsxtvo5jimv")
-- `proxy_download_path` (default: "T:\flowDavinci")
+- `proxy_download_path` (default: "T:\flowDavinci" on Windows, "/datas/dulacd/tmp/flowDavinci" on Linux)
 - `projects` (default: ["Tmnt2"])
 - `tasks` (default: `["delivery", "confo_render", "compo_comp", "compo_precomp", "light_precomp", "anim_main", "layout_base", "previz_base", "editing_edt"]`)
 - `verbose_level` (default: 3)
@@ -28,10 +28,17 @@ Build a GUI window (Geometry: `[400, 400, 550, 450]`) using `fusion.UIManager`.
 Organize it into distinct expandable/collapsible visual sections (`ui.VGroup`) toggled by Header Buttons (`▶ FLOW`, `▶ SHOT`, etc). Use a `create_toggle_handler` function to hide/show the VGroups.
 The `AdvancedGrp` must be forced to `.Hide()` state upon initialization!
 
+**Section: FILE**
+- `ImageSeqCheck`: Checkbox (labeled "Image Sequences:") to load heavy image sequences. Checking this triggers an `OnImageSeqCheck` event which toggles the enabled state of `ApplyLutCheck`.
+- `ApplyLutCheck`: Checkbox to apply the configuration LUT (Disabled by default).
+- `UseAudio`: Checkbox to fetch published .wav audio.
+- `MissingShotCheck`: Checkbox (labeled "Missing Shots:") placed next to `UseAudio`. Checked by default. If unchecked, the script bypasses missing shots entirely instead of generating placeholders.
+
 **Section: FLOW**
 - `ModeCombo`: Dropdown containing "Sequence Mode" and "Playlist Mode".
 - `ProjectCombo`: Dropdown of projects from config.
 - `SeqGrp`: An HGroup containing `SeqCombo` (Sequence numbers).
+- `CutOrderCheck`: Checkbox (labeled "Use Cut Order:") located under the Sequence selection. If checked (default), the script sorts the timeline strictly by `sg_cut_order`. If unchecked, it falls back to alphabetical sorting of the shot codes.
 - `PlaylistGrp`: An HGroup (hidden by default) containing a `PlaylistSearchLine`, a `FindPlaylistBtn`, and a `PlaylistCombo`. 
   - *Logic*: Clicking `FindPlaylistBtn` queries Flow for playlists containing the typed string and populates `PlaylistCombo`.
 
@@ -71,9 +78,13 @@ Create a `resolve_path(raw_path)` function:
 - If it starts with `V:\` but doesn't exist, smartly swap to `W:\` and check again (and vice versa).
 
 Create an `ensure_luts_installed()` function:
-- Checks `T:\davinciFlow_repo\luts`. Uses `shutil.copy2` to copy `.cube` files to DaVinci's system LUT folder at `C:\ProgramData\Blackmagic Design\DaVinci Resolve\Support\LUT\davinciFlow`.
+- On Windows: Checks `T:\davinciFlow_repo\luts`. Uses `shutil.copy2` to copy `.cube` files to DaVinci's system LUT folder at `C:\ProgramData\Blackmagic Design\DaVinci Resolve\Support\LUT\davinciFlow`.
+- On Linux: Checks `/datas/dulacd/gitHub/davinciFlow/luts`. Copies `.cube` files to `~/.local/share/DaVinciResolve/LUT/davinciFlow` or `/opt/resolve/LUT/davinciFlow` (or `/datas/dulacd/DaVinciResolve/LUT/davinciFlow`).
 
 ## 4. SHOTGRID QUERY LOGIC (`fetch_flow_data`)
+**Global Query Rules:**
+- Whenever querying for `Shot` entities (in Sequence Mode, Playlist Mode, or the Shot Browser UI), the script must always append the filter `["sg_status_list", "is_not", "omt"]` to ensure omitted shots are completely ignored and not loaded into DaVinci.
+
 When "Build Sequence" is clicked, check the active Mode:
 
 **If Sequence Mode:**
@@ -95,17 +106,153 @@ When "Build Sequence" is clicked, check the active Mode:
 ## 5. MEDIA IMPORT & DAVINCI ASSEMBLY
 1. Pre-flight phase: Gather all web proxy downloads where local file doesn't exist. Execute in parallel using `concurrent.futures.ThreadPoolExecutor(max_workers=10)`.
 2. **Timeline Logic**:
-   - In Sequence Mode: Base name is `Seq_YYYY_MM_DD`. If `UseLatestTimeline` is false, it appends a suffix index. If true, it clears the latest existing one.
-   - In Playlist Mode: Base name is `{PlaylistName}_vXXX`. If `UseLatestTimeline` is false, it parses the timeline names via regex (`_v(\d{3})$`) to mathematically increment the padding (e.g. `_v001` becomes `_v002`). If true, it clears the clips in the highest version found.
-3. Import media and takes to Media Pool.
-4. Construct `clip_info` dicts (`{"mediaPoolItem": item, "is_hero": bool}`) for `AppendToTimeline()`. Calculate duration: `endFrame = sg_cut_out - sg_cut_in`.
-5. **LUT Application:** Iterate through `appended_items`.
+   - In Sequence Mode: Base name is `Seq_YYYY_MM_DD`. If `UseLatestTimeline` is false, it appends a suffix index. If true, it clears all clips in the latest existing one simultaneously using a bulk `target_timeline.DeleteClips(all_items)` operation for performance.
+   - In Playlist Mode: Base name is `{PlaylistName}_vXXX`. If `UseLatestTimeline` is false, it parses the timeline names via regex (`_v(\d{3})$`) to mathematically increment the padding. If true, it clears all the clips in the highest version found.
+3. Import media and takes to Media Pool. *Note: If a shot proxy is missing on disk and `MissingShotCheck` is unchecked, the script skips appending this shot entirely.*
+4. Construct `clip_info` dicts (`{"mediaPoolItem": item, "is_hero": bool, "is_missing": bool, "shot_code": str}`) for `AppendToTimeline()`. Calculate duration: `endFrame = sg_cut_out - sg_cut_in`.
+5. **LUT & Placeholder Application:** Iterate through `appended_items`.
+   - **Missing Shots**: If `is_missing` is True, bypass LUT application. Use `item.AddFusionComp()` to create a local Fusion composition. Generate a solid red `Background` node and a `TextPlus` node containing "NO CLIP\n[shot_code]". Connect them via a `Merge` node to `MediaOut1` to create a dynamic timeline generator (replacing the need for an external .jpg file).
+   - **TMNT2 Pipeline**: If Project is "Tmnt2", file is EXR, and both `ImageSeqCheck` and `ApplyLutCheck` are checked: bypass standard logic and apply the optimized `drx/tmnt2_0cio_exr.drx` node tree (which uses a native Resolve CST to compress ACEScg to ACEScct, followed by the custom `tmnt2_acescct_to_rec709.cube` LUT to apply the look without highlight clipping or slow OCIO playback).
+   - **Standard ACEScg Pipeline**: If file is EXR, Project is NOT "Tmnt2", and both `ImageSeqCheck` and `ApplyLutCheck` are checked: apply the `drx/Acescg.drx` node tree (containing standard ACES Color Space Transforms).
    - If EXR and is_hero: Apply standard `exr_lut`.
    - If EXR and NOT is_hero: Apply generated B&W LUT (`TMNT2_acescg_to_vd16_bw.cube`).
    - If Proxy and NOT is_hero: Apply generic `proxy_bw.cube`.
-   *(LUTs are applied via `timeline_item.SetLUT(1, lut_path)`).*
+   *(LUTs are applied silently in the background via the modern `timeline_item.GetNodeGraph().SetLUT(1, lut_path)` API to avoid forcing the UI to switch to the Color page, falling back to `item.SetLUT` for backwards compatibility).*
 
 ## 6. MATHEMATICAL LUT GENERATOR (`generate_luts.py`)
 Provide a standalone script (`generate_luts.py`) that uses raw math to bake Black & White transforms.
 - For generic `proxy_bw.cube`: Generates a 33x33x33 identity cube, forcing `L = R*0.2126 + G*0.7152 + B*0.0722`.
 - For the EXR LUT: Ingests the studio's EXR LUT, computes Rec.709 Luma `L`, and writes a new `.cube` where `R = G = B = L`.
+
+**Section: ADVANCED**
+- `AgxCheck`: Checkbox (labeled "AgX Pipeline"). If checked, it enables the high-speed 3-Tier AgX color science pipeline across all imported media. 
+  - **Show Config Override & Lockout Rules**: If a project's configuration (such as TMNT2 in `configs/tmnt2.json`) defines `"allow_agx": false`, AgX is completely prohibited for that show. Selecting "Tmnt2" in the Project dropdown dynamically disables and unchecks the "AgX Pipeline" checkbox to prevent artists from misapplying AgX to shows with locked custom color science.
+- `CleanCacheBtn`: Button to clear the MP4 proxy cache directory.
+
+## AgX Pipeline Configuration (`configs/agx.json` & Direct LUTs)
+AgX parameters and color profile assignments are dynamically configured via a dedicated system profile at **`configs/agx.json`**:
+```json
+{
+    "display_name": "AgX",
+    "is_pipeline_preset": true,
+    "exr_drx_grade": "AgX_exr_cst.drx",
+    "stills_lut": "davinciFlow/agx_srgb_img.cube",
+    "proxy_lut": "davinciFlow/agx_rec709_proxy.cube",
+    "allow_agx": true
+}
+```
+By marking `"is_pipeline_preset": true`, `davinciFlow` loads these color parameters without polluting the main ShotGrid project dropdown.
+
+When `AgxCheck` is enabled on a permitted show, media is formatted using three high-speed pathways defined in `configs/agx.json`:
+1. **Image Stills (`.jpg`, `.jpeg`, `.png`, `.tga`, `.tiff`)**: Directly assigns `davinciFlow/agx_srgb_img.cube` via `SetLUT()`. No `.drx` or DCTL is loaded!
+2. **Video Proxies (`.mov`, `.mp4`, DNxHD, MXF)**: Directly assigns `davinciFlow/agx_rec709_proxy.cube` via `SetLUT()`. No `.drx` or DCTL is loaded!
+3. **EXR Sequences (`.exr`)**: Applies `drx/AgX_exr_cst.drx` (a native Color Space Transform compressing scene-linear ACEScg into log ACEScct, paired directly with `agx_acescct_to_rec709.cube`). This prevents HDR highlight clipping above 1.0 while running at full hardware GPU speed.
+
+**Show Color Science Protection (`allow_agx`)**:
+Show configs in `configs/` explicitly control whether artists can activate AgX:
+- **`tmnt2.json`**: Enforces `"allow_agx": false`, guaranteeing that TMNT2 EXR sequences strictly use `tmnt2_0cio_exr.drx` and Academy SPI_anim filmic tone response without AgX interference.
+- **`default.json`**: Enforces `"allow_agx": true`, allowing standard ACEScg projects to seamlessly toggle into AgX.
+
+**AgX EXR Color Space Transform Setup (`AgX_exr_cst.drx`)**:
+Because image stills and video proxies utilize direct 3D hardware LUTs (`agx_srgb_img.cube` and `agx_rec709_proxy.cube`), **no `.drx` files or DCTL installations are required for standard media!**
+
+For scene-linear **`.exr` sequences**, `davinciFlow` assigns `drx/AgX_exr_cst.drx` to buffer dynamic range above 1.0 into log format before LUT evaluation. If you ever need to recreate `AgX_exr_cst.drx` from scratch in DaVinci Resolve:
+1. Create a single color node in the Color Page.
+2. Drag & drop the native **Color Space Transform (CST)** effect onto Node 1:
+   - **Input Color Space**: `ACEScg` (or show linear gamut) | **Input Gamma**: `Linear`
+   - **Output Color Space**: `ACEScct` | **Output Gamma**: `ACEScct` (or `ACEScct Log`)
+3. Assign `davinciFlow/agx_acescct_to_rec709.cube` to Node 1 (or Node 2).
+4. Right-click the still in your gallery and export it as `AgX_exr_cst.drx` into the script's `drx/` folder.
+
+**Cross-Platform Portability & Performance Advantage**:
+Because `AgX_exr_cst.drx` uses native Resolve Color Space Transforms instead of hardcoded external OCIO file paths or proprietary DCTL shaders, this single DRX operates natively across both Linux and Windows workstations at real-time GPU hardware speeds without requiring platform-specific re-exports!
+
+---
+
+## 7. NATIVE OCIO v2.5.1 & CTF PIPELINE GENERATOR (`export_tmnt2_ocio2_ctf.py`)
+To upgrade legacy OCIO v1 show transforms (such as TMNT2) to modern high-speed pipelines without loss of mathematical precision, provide a standalone generator script: `export_tmnt2_ocio2_ctf.py`.
+- **Environment & Optimization**: Run within `rez env ocio-2.5.1 pyocio-2.5.1`. The script loads the legacy 15-operation show profile and applies `processor.getOptimizedProcessor(ocio.OPTIMIZATION_LOSSLESS)` to collapse redundant matrices and range operations down to an optimized 8-9 operation chain.
+- **Color Transform Format (.ctf) Support**: Why `.ctf` instead of Academy `.clf`? Standard `.clf` does not support `InverseLUT1D` nodes and forces lossy inversion baking. Autodesk/Academy Color Transform Format (`.ctf`) natively supports `InverseLUT1D`, matrices, and range operators, guaranteeing 100% mathematical equality to the original studio shaders without highlight clipping or interpolation drift.
+- **Outputs Generated**:
+  1. `tmnt2_native_look_v2.ctf`: Linear `ACEScg` to `SPI_anim` Rec.709 display look.
+  2. `tmnt2_acescct_to_rec709_v2.ctf`: Logarithmic `ACEScct` to `SPI_anim` Rec.709 display look.
+  3. `tmnt2_config_v2.ocio`: A lightweight, standalone OCIO v2.1 configuration file referencing the native CTF shaders for instant loading in DCCs and DaVinci Resolve.
+
+### Loading `.ctf` and OCIO v2 in DaVinci Resolve
+Because `.ctf` is an active OpenColorIO shader format containing complex mathematical formulas (like `InverseLUT1D`), DaVinci Resolve will **not** list it in the static right-click LUT menu (which only registers table formats like `.cube`, `.3dl`, or `.clf`).
+To load the `.ctf` look in Resolve 21:
+1. Go to the **Color Page** and open the **Effects (OpenFX)** panel.
+2. Under **Resolve FX Color**, drag and drop **OCIO Display** (or **OCIO ColorSpace**) onto your color node.
+3. In the Inspector / Settings panel:
+   - Change **OCIO Config** from Default to **Custom File...** (or **FromFile**).
+   - Browse and select the standalone config file: `/s/prodanim/studio/_sandbox/dulacd/tmnt2_config_v2.ocio` (or `/datas/dulacd/tmnt2_config_v2.ocio`).
+   - Set **Input Color Space**: `ACEScg` (for EXR) or `ACEScct` (for Log).
+   - Set **Display Device**: `Rec.709-Screen`.
+   - Set **View Transform**: `SPI_anim`.
+
+### Dual-Workflow Architecture: Why `.cube` is Slower or Faster than OCIO Display
+When testing timeline performance in DaVinci Resolve, you will notice that using an **OCIO Display** node is significantly slower than applying the baked **`.cube`** 3D LUT. This is intentional and comes down to hardware rendering architecture:
+- **Why OCIO Display (.ctf) is Slower in Resolve**: OpenFX (OFX) plugins execute outside Resolve's ultra-fast core color node loop, adding API overhead per frame. More importantly, executing an OCIO v2 `.ctf` shader requires the GPU to actively compute an 8- to 9-step mathematical chain—performing matrix multiplications, power curves, and iterative floating-point approximations for `InverseLUT1D` tables—per pixel on every single frame.
+- **Why `.cube` is Blazing Fast in Resolve**: When applying a `.cube` LUT directly on a node (or via a CST node), DaVinci Resolve loads the static 3D lookup table directly into GPU video memory as a 3D texture. Resolve's hardware shaders perform instantaneous tetrahedral interpolation with essentially zero computational overhead.
+
+**Industry Standard Recommendation:**
+- **For DaVinci Resolve (Real-Time Review & Editorial)**: Always use the **`CST (ACEScg ➔ ACEScct)` + `tmnt2_acescct_to_rec709.cube`** workflow (automatically applied by `davinciFlow` via `drx/tmnt2_0cio_exr.drx`). Converting scene-linear EXRs into log first preserves >1.0 highlight dynamic range without clipping while delivering smooth real-time 24fps/30fps playback.
+- **For DCCs & Compositing (Nuke / Katana / Houdini / Arnold)**: Use the **`tmnt2_config_v2.ocio` and `.ctf` shaders**. Lighting and compositing software does not rely on real-time editorial playback; instead, they require 100% mathematically exact float32 calculations without table interpolation tolerances.
+
+### Standalone AgX Color Science Pipeline (`export_agx_pipeline.py`)
+To democratize AgX grading across the studio without relying on external DCTL files or system-wide OCIO installations, we provide `export_agx_pipeline.py`.
+- **Mathematical Architecture**: Implements industry-standard AgX (by Troy Sobotka) directly in Python and PyOpenColorIO 2.5.1 using vector math and NumPy. It handles chromaticity rotation to AgX inset primaries, log encoding (-10.0 to +6.5 EV), and applies the smooth AgX Punchy filmic tone mapping curve.
+- **Why Eliminate DCTLs?**: Custom DaVinci DCTL shaders often fail across different OS platforms (Linux vs Windows) or when external studio files are missing on local disk. Baked 65x65x65 3D LUTs run natively on Resolve's hardware GPU engine at zero computational overhead and require zero external plugins.
+- **Outputs Generated & Deployed**:
+  1. `agx_acescct_to_rec709.cube` & `.ctf` (for scene-linear EXRs via log buffering).
+  2. `agx_rec709_proxy.cube` & `.ctf` (for display-referred video proxies).
+  3. `agx_srgb_img.cube` & `.ctf` (for sRGB textures and stills).
+  4. `agx_config_v2.ocio`: A standalone OCIO v2.1 profile deployed to user sandboxes (`/datas/dulacd/` and the centralized studio sandbox `/s/prodanim/studio/_sandbox/dulacd/`) so lighting and compositing artists in Nuke/Houdini/Katana can access identical AgX color responses across all studio shows.
+
+### Centralized Studio OCIO v2 Repository (`/s/prodanim/studio/_sandbox/dulacd`)
+All generated standalone OCIO v2 configurations (`tmnt2_config_v2.ocio`, `agx_config_v2.ocio`) and native Color Transform Format shaders (`.ctf`) are globally hosted in **`/s/prodanim/studio/_sandbox/dulacd/`** rather than show-specific production sandboxes (such as `tmnt2/_sandbox`).
+- **Why Centralize in Studio Sandbox?**: Placing color configurations in the global `studio/` sandbox guarantees universal accessibility across diverse studio productions, lighting workflows, and visual effects applications (Nuke, Houdini, Katana, Blender, Renderers). Artists on any show can reference these unified OCIO profiles without encountering show-specific storage access bottlenecks or duplicating files across project hierarchies.
+- **Repository Contents at `/s/prodanim/studio/_sandbox/dulacd/`**:
+  - **AgX Suite**: `agx_config_v2.ocio`, `agx_acescct_to_rec709.ctf`, `agx_rec709_proxy.ctf`, `agx_srgb_img.ctf`, and associated `.cube` files.
+  - **TMNT2 Suite**: `tmnt2_config_v2.ocio`, `tmnt2_native_look_v2.ctf`, `tmnt2_acescct_to_rec709_v2.ctf`, and associated `.cube` files.
+
+---
+
+## 8. INSTALLATION GUIDE
+
+**1. Copy the Scripts & DRX Files:**
+Copy `davinciFlow.py`, `export_tmnt2_ocio2_ctf.py`, and the `drx/` folder to your DaVinci Resolve Fusion Scripts Utility directory:
+- Linux: `/datas/dulacd/DaVinciResolve/Fusion/Scripts/Utility/davinciFlow/`
+- Windows: `%APPDATA%\Blackmagic Design\DaVinci Resolve\Support\Fusion\Scripts\Utility\davinciFlow\`
+
+**2. Copy the LUTs & CTF Profiles:**
+Copy `tmnt2_acescct_to_rec709.cube`, `tmnt2_native_look_v2.ctf`, and `tmnt2_acescct_to_rec709_v2.ctf` to your DaVinci Resolve LUT directory inside a `davinciFlow` subfolder:
+- Linux: `/datas/dulacd/DaVinciResolve/LUT/davinciFlow/`
+- Windows: `C:\ProgramData\Blackmagic Design\DaVinci Resolve\Support\LUT\davinciFlow\`
+For standalone DCC usage, copy `tmnt2_config_v2.ocio` and the `.ctf` files to the centralized studio sandbox (`/s/prodanim/studio/_sandbox/dulacd/`) or your workstation root (`/datas/dulacd/`).
+
+**3. Setting up `tmnt2_0cio_exr.drx` for Fast Playback:**
+If you need to rebuild the `.drx` file for the TMNT2 look, create this specific node tree in the Color Page and export it as `tmnt2_0cio_exr.drx` to the plugin's `drx/` folder:
+- **Node 1: Color Space Transform (CST)**
+  - Input Color Space: `ACES (AP1)` or `ACEScg`
+  - Input Gamma: `Linear`
+  - Output Color Space: `ACES (AP1)` or `ACEScct`
+  - Output Gamma: `ACEScct`
+- **Node 2: 3D LUT (Recommended for Real-Time Playback)**
+  - Apply the `davinciFlow/tmnt2_acescct_to_rec709.cube` 3D LUT directly from the right-click LUT menu.
+
+**4. Setting up `AgX_exr_cst.drx` for Fast AgX Playback on EXRs:**
+Because EXR files are scene-linear with HDR values above 1.0, applying a LUT directly without log compression would clip high luminance highlights. To create the DCTL-free AgX powergrade for EXRs:
+1. In DaVinci Resolve, select an EXR clip and open the **Color Page**.
+2. Create two serial color nodes:
+   - **Node 1: Color Space Transform (CST)**
+     - Input Color Space: `ACES (AP1)` or `ACEScg` (depending on your scene linear render primaries)
+     - Input Gamma: `Linear`
+     - Output Color Space: `ACES (AP1)` or `ACEScct`
+     - Output Gamma: `ACEScct`
+     - Tone Mapping & Gamut Mapping: None
+   - **Node 2: 3D LUT**
+     - Right-click the node ➔ **LUT** ➔ **davinciFlow** ➔ select **`agx_acescct_to_rec709`**.
+3. Right-click the viewer screen and select **Grab Still**.
+4. In the Stills / PowerGrade Gallery, right-click the thumbnail you just created and select **Export...**.
+5. Save the file as **`AgX_exr_cst.drx`** directly into your `/datas/dulacd/gitHub/davinciFlow/drx/` folder (and make sure to copy it over to your Fusion Scripts utility folder!). When `AgxCheck` is enabled, `davinciFlow` will automatically detect and apply this optimized grade!

@@ -1,0 +1,62 @@
+ocio_profile_version: 2.1
+
+search_path: .
+strictparsing: false
+luma: [0.2126, 0.7152, 0.0722]
+
+roles:
+  default: ACEScg
+  scene_linear: ACEScg
+  rendering: ACEScg
+  color_picking: sRGB-Stills
+  texture_paint: sRGB-Stills
+  data: Raw
+
+displays:
+  Rec.709-Screen:
+    - !<View> {name: AgX-EXR, colorspace: ACEScg, looks: AgX_EXR_Look}
+    - !<View> {name: AgX-Proxy, colorspace: Rec709-Proxy, looks: AgX_Proxy_Look}
+    - !<View> {name: AgX-Stills, colorspace: sRGB-Stills, looks: AgX_Stills_Look}
+
+colorspaces:
+  - !<ColorSpace>
+    name: ACEScg
+    family: ACES
+    encoding: scene-linear
+    description: ACEScg linear space (EXR)
+
+  - !<ColorSpace>
+    name: ACEScct
+    family: ACES
+    encoding: log
+
+  - !<ColorSpace>
+    name: Rec709-Proxy
+    family: Video
+    description: Rec.709 video space for MOV/MP4 proxies
+
+  - !<ColorSpace>
+    name: sRGB-Stills
+    family: Stills
+    description: sRGB space for PNG/TGA/JPG textures
+
+  - !<ColorSpace>
+    name: Raw
+    family: Utility
+    isdata: true
+
+looks:
+  - !<Look>
+    name: AgX_EXR_Look
+    process_space: ACEScct
+    transform: !<FileTransform> {src: agx_acescct_to_rec709.ctf, interpolation: tetrahedral}
+
+  - !<Look>
+    name: AgX_Proxy_Look
+    process_space: Rec709-Proxy
+    transform: !<FileTransform> {src: agx_rec709_proxy.ctf, interpolation: tetrahedral}
+
+  - !<Look>
+    name: AgX_Stills_Look
+    process_space: sRGB-Stills
+    transform: !<FileTransform> {src: agx_srgb_img.ctf, interpolation: tetrahedral}

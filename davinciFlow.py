@@ -12,10 +12,22 @@ import concurrent.futures
 try:
     _dir = os.path.dirname(os.path.abspath(__file__))
 except NameError:
-    if os.path.exists(r"C:\ProgramData\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility\davinciFlow"):
-        _dir = r"C:\ProgramData\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility\davinciFlow"
+    if sys.platform == "win32":
+        if os.path.exists(r"C:\ProgramData\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility\davinciFlow"):
+            _dir = r"C:\ProgramData\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility\davinciFlow"
+        else:
+            _dir = r"W:\jmji\_sandbox\dulacd\Script\Blender"
     else:
-        _dir = r"W:\jmji\_sandbox\dulacd\Script\Blender"
+        linux_path = os.path.expanduser("~/.local/share/DaVinciResolve/Fusion/Scripts/Utility/davinciFlow")
+        custom_linux_path = "/datas/dulacd/DaVinciResolve/Fusion/Scripts/Utility/davinciFlow"
+        if os.path.exists(linux_path):
+            _dir = linux_path
+        elif os.path.exists(custom_linux_path):
+            _dir = custom_linux_path
+        elif os.path.exists("/opt/resolve/Fusion/Scripts/Utility/davinciFlow"):
+            _dir = "/opt/resolve/Fusion/Scripts/Utility/davinciFlow"
+        else:
+            _dir = "/datas/dulacd"
 LOG_PATH = os.path.join(_dir, "davinciFlow.log")
 
 
@@ -27,18 +39,15 @@ try:
     SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 except NameError:
     # DaVinci Resolve's embedded interpreter doesn't set __file__
-    if os.path.exists(r"C:\ProgramData\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility\davinciFlow"):
-        SCRIPT_DIR = r"C:\ProgramData\Blackmagic Design\DaVinci Resolve\Fusion\Scripts\Utility\davinciFlow"
-    else:
-        SCRIPT_DIR = r"W:\jmji\_sandbox\dulacd\Script\Blender"
-    
+    SCRIPT_DIR = _dir
+
 CONFIG_PATH = os.path.join(SCRIPT_DIR, "davinciFlow_config.json")
 
 # Default fallback values if config fails
 FLOW_URL = "https://mikrosanim.priv.shotgunstudio.com/"
 SCRIPT_NAME = "resolveTest"
 SCRIPT_KEY = "vblervsd(ubdZzxsxtvo5jimv"
-PROXY_DOWNLOAD_PATH = r"T:\flowDavinci"
+PROXY_DOWNLOAD_PATH = r"T:\flowDavinci" if sys.platform == "win32" else "/datas/dulacd/tmp/flowDavinci"
 PROJECTS = ["Tmnt2"]
 MASTER_TASKS = [
     "delivery", "confo_render", "compo_comp", "compo_precomp",
@@ -54,11 +63,32 @@ if os.path.exists(CONFIG_PATH):
             SCRIPT_NAME = config.get('script_name', SCRIPT_NAME)
             SCRIPT_KEY = config.get('script_key', SCRIPT_KEY)
             PROXY_DOWNLOAD_PATH = config.get('proxy_download_path', PROXY_DOWNLOAD_PATH)
+            if sys.platform != "win32" and PROXY_DOWNLOAD_PATH.startswith("T:\\"):
+                PROXY_DOWNLOAD_PATH = "/datas/dulacd/tmp/flowDavinci"
             PROJECTS = config.get('projects', PROJECTS)
             MASTER_TASKS = config.get('tasks', MASTER_TASKS)
             EXR_LUT = config.get('exr_lut', '')
     except Exception as e:
         print(f"Failed to load json config: {e}")
+
+# Dynamically load show configurations
+SHOW_CONFIGS = {}
+CONFIGS_DIR = os.path.join(SCRIPT_DIR, "configs")
+if os.path.exists(CONFIGS_DIR):
+    for f_name in os.listdir(CONFIGS_DIR):
+        if f_name.endswith(".json"):
+            try:
+                with open(os.path.join(CONFIGS_DIR, f_name), 'r') as cf:
+                    cfg = json.load(cf)
+                    display_name = cfg.get("display_name")
+                    base_key = os.path.splitext(f_name)[0].lower()
+                    SHOW_CONFIGS[base_key] = cfg
+                    if display_name:
+                        SHOW_CONFIGS[display_name.lower()] = cfg
+                        if not cfg.get("is_pipeline_preset", False) and display_name not in PROJECTS and display_name.lower() != "default":
+                            PROJECTS.append(display_name)
+            except Exception as e:
+                print(f"Failed to load show config {f_name}: {e}")
 
 VERBOSE_LEVEL = config.get('verbose_level', 3) if 'config' in locals() else 3
 level_map = {0: logging.CRITICAL, 1: logging.ERROR, 2: logging.WARNING, 3: logging.INFO, 4: logging.DEBUG, 5: logging.DEBUG}
@@ -91,8 +121,16 @@ if os.path.exists(USERPREF_PATH):
 try:
     import shotgun_api3
 except ImportError:
-    print("Error: The 'shotgun_api3' module is not installed.")
-    sys.exit(1)
+    if sys.platform != "win32":
+        sys.path.append("/s/apps/packages/mikros/shotgunPythonApi/3.3.1")
+        try:
+            import shotgun_api3
+        except ImportError:
+            print("Error: The 'shotgun_api3' module is not installed (Linux fallback failed).")
+            sys.exit(1)
+    else:
+        print("Error: The 'shotgun_api3' module is not installed.")
+        sys.exit(1)
 
 try:
     resolve = bmd.scriptapp('Resolve')
@@ -188,8 +226,14 @@ def find_clip_in_folder(folder, file_path):
 
 def ensure_luts_installed():
     import shutil
-    davinci_lut_dir = r"C:\ProgramData\Blackmagic Design\DaVinci Resolve\Support\LUT\davinciFlow"
-    repo_lut_dir = r"T:\davinciFlow_repo\luts"
+    if sys.platform == "win32":
+        davinci_lut_dir = r"C:\ProgramData\Blackmagic Design\DaVinci Resolve\Support\LUT\davinciFlow"
+        repo_lut_dir = r"T:\davinciFlow_repo\luts"
+    else:
+        davinci_lut_dir = os.path.expanduser("~/.local/share/DaVinciResolve/LUT/davinciFlow")
+        if not os.path.exists(os.path.expanduser("~/.local/share/DaVinciResolve/LUT")):
+            davinci_lut_dir = "/datas/dulacd/DaVinciResolve/LUT/davinciFlow"
+        repo_lut_dir = "/datas/dulacd/gitHub/davinciFlow/luts"
     if not os.path.exists(repo_lut_dir): return
     os.makedirs(davinci_lut_dir, exist_ok=True)
     for f in os.listdir(repo_lut_dir):
@@ -207,6 +251,13 @@ def _path_exists_smart(p):
 def resolve_path(raw_path):
     if not raw_path: return None
     
+    if sys.platform != "win32":
+        clean_path = raw_path.replace("\\", "/")
+        if clean_path.upper().startswith("V:/") or clean_path.upper().startswith("W:/"):
+            tail = clean_path[3:]
+            return f"/s/prodanim/{tail}"
+        return clean_path
+
     clean_path = raw_path.replace("/", "\\")
     
     # Handle Linux paths
@@ -256,6 +307,11 @@ layout = ui.VGroup([
             ui.Label({"Text": "Sequence:", "Weight": 0}),
             ui.ComboBox({"ID": "SeqCombo", "Weight": 2, "ToolTip": "Select the sequence to build"})
         ]),
+        ui.HGroup([
+            ui.Label({"Text": "Use Cut Order:", "ToolTip": "Sort clips by Flow cut order instead of alphabetical", "Weight": 0}),
+            ui.CheckBox({"ID": "CutOrderCheck", "Checked": True, "ToolTip": "Sort clips by Flow cut order instead of alphabetical", "Weight": 0}),
+            ui.Label({"Weight": 1})
+        ]),
         ui.HGroup({"ID": "PlaylistGrp"}, [
             ui.Label({"Text": "Playlist:", "Weight": 0}),
             ui.LineEdit({"ID": "PlaylistSearchLine", "PlaceholderText": "e.g. MAY24", "Weight": 1}),
@@ -285,15 +341,18 @@ layout = ui.VGroup([
     ui.Button({"ID": "FileHeaderBtn", "Text": "▼ FILE", "Alignment": {"AlignLeft": True}, "Weight": 0}),
     ui.VGroup({"ID": "FileGrp", "Weight": 0}, [
         ui.HGroup([
-            ui.Label({"Text": "Use Image Sequences:", "ToolTip": "Download and load heavy image sequences instead of proxy movies", "Weight": 0}),
+            ui.Label({"Text": "Image Sequences:", "ToolTip": "Download and load heavy image sequences instead of proxy movies", "Weight": 0}),
             ui.CheckBox({"ID": "ImageSeqCheck", "Checked": False, "ToolTip": "Download and load heavy image sequences instead of proxy movies", "Weight": 0}),
             ui.VGap(2),
-            ui.CheckBox({"ID": "ApplyLutCheck", "Text": "Apply LUT", "Checked": True, "ToolTip": "Apply the color management LUT defined in the config to the EXR sequences", "Weight": 0}),
+            ui.CheckBox({"ID": "ApplyLutCheck", "Text": "Apply LUT", "Checked": True, "Enabled": False, "ToolTip": "Apply the color management LUT defined in the config to the EXR sequences", "Weight": 0}),
             ui.Label({"Weight": 1})
         ]),
         ui.HGroup([
             ui.Label({'Text': 'Audio File:', "ToolTip": "Fetch and sync published audio (.wav) from Flow to the timeline", "Weight": 0}),
             ui.CheckBox({'ID': 'UseAudio', 'Checked': False, "ToolTip": "Fetch and sync published audio (.wav) from Flow to the timeline", "Weight": 0}),
+            ui.VGap(2),
+            ui.Label({'Text': 'Missing Shots:', "ToolTip": "If checked, creates a red placeholder clip. If unchecked, skips missing shots completely.", "Weight": 0}),
+            ui.CheckBox({'ID': 'MissingShotCheck', 'Checked': True, "ToolTip": "If checked, creates a red placeholder clip. If unchecked, skips missing shots completely.", "Weight": 0}),
             ui.Label({"Weight": 1})
         ]),
     ]),
@@ -336,6 +395,8 @@ layout = ui.VGroup([
     ui.Button({"ID": "AdvancedHeaderBtn", "Text": "▼ ADVANCED", "Alignment": {"AlignLeft": True}, "Weight": 0}),
     ui.VGroup({"ID": "AdvancedGrp", "Weight": 0}, [
         ui.HGroup([
+            ui.CheckBox({"ID": "AgxCheck", "Text": "AgX Pipeline", "Checked": False, "ToolTip": "Apply AgX DRX color grades instead of standard LUTs", "Weight": 0}),
+            ui.HGap(5),
             ui.Button({'ID': 'CleanCacheBtn', 'Text': 'Clean Cache', 'ToolTip': 'Delete all downloaded MP4 proxies in the cache directory', 'Weight': 0}),
             ui.Label({"Weight": 1})
         ])
@@ -425,7 +486,7 @@ def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use
             log("No shots linked to the versions in this playlist.")
             return None
             
-        shots = retry_sg(lambda: sg.find("Shot", [["id", "in", shot_ids]], ["id", "code", "sg_cut_in", "sg_cut_out", "sg_head_in"]))
+        shots = retry_sg(lambda: sg.find("Shot", [["id", "in", shot_ids], ["sg_status_list", "is_not", "omt"]], ["id", "code", "sg_cut_in", "sg_cut_out", "sg_head_in", "sg_cut_order"]))
         
         # Apply target_shots filter
         if target_shots:
@@ -472,7 +533,8 @@ def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use
                 'cut_out': shot_data.get('sg_cut_out'),
                 'head_in': shot_data.get('sg_head_in'),
                 'is_web_proxy': is_web_proxy,
-                'takes': []  # No historical takes in playlist mode
+                'takes': [],  # No historical takes in playlist mode
+                'cut_order': shot_data.get('sg_cut_order')
             }
             
         return final_data
@@ -481,9 +543,10 @@ def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use
     log(f"\nQuerying Shots for Sequence {sequence_name}...")
     shot_filters = [
         ['project', 'is', project],
-        ['sg_sequence', 'name_is', sequence_name]
+        ['sg_sequence', 'name_is', sequence_name],
+        ['sg_status_list', 'is_not', 'omt']
     ]
-    shot_fields = ['id', 'code', 'sg_cut_in', 'sg_cut_out', 'sg_head_in']
+    shot_fields = ['id', 'code', 'sg_cut_in', 'sg_cut_out', 'sg_head_in', 'sg_cut_order']
     shots = retry_sg(lambda: sg.find("Shot", shot_filters, shot_fields))
     
     if not shots:
@@ -618,7 +681,8 @@ def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use
                     'takes': takes_list,
                     'cut_in': shot_data.get('sg_cut_in'),
                     'cut_out': shot_data.get('sg_cut_out'),
-                    'head_in': shot_data.get('sg_head_in')
+                    'head_in': shot_data.get('sg_head_in'),
+                    'cut_order': shot_data.get('sg_cut_order')
                 }
                 found_media = True
                 break 
@@ -632,7 +696,8 @@ def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use
                 'is_web_proxy': False,
                 'cut_in': shot_data.get('sg_cut_in'),
                 'cut_out': shot_data.get('sg_cut_out'),
-                'head_in': shot_data.get('sg_head_in')
+                'head_in': shot_data.get('sg_head_in'),
+                'cut_order': shot_data.get('sg_cut_order')
             }
                         
     return media_dict
@@ -653,6 +718,10 @@ def OnUseHeroCheck(ev):
     items["HeroFilterLine"].Enabled = checked
     items["ReverseHeroCheck"].Enabled = checked
     items["ShowReviewShotsBtn"].Enabled = checked
+
+def OnImageSeqCheck(ev):
+    checked = items["ImageSeqCheck"].Checked
+    items["ApplyLutCheck"].Enabled = checked
 
 def OnModeChange(ev):
     mode = items["ModeCombo"].CurrentText
@@ -709,7 +778,10 @@ def OnBuild(ev):
     use_img = items["ImageSeqCheck"].Checked
     use_lut = items["ApplyLutCheck"].Checked
     use_audio = items["UseAudio"].Checked
+    include_missing_shots = items["MissingShotCheck"].Checked
+    use_cut_order = items["CutOrderCheck"].Checked
     use_latest_timeline = items["UseLatestTimeline"].Checked
+    use_agx = items["AgxCheck"].Checked
     
     take_combo_text = items["TakeCountCombo"].CurrentText
     if take_combo_text == "None (Latest Only)":
@@ -814,7 +886,10 @@ def OnBuild(ev):
     audio_clip_infos = []
     pending_takes_to_attach = []
     
-    sorted_shots = sorted(media_data.values(), key=lambda x: x['shot_code'])
+    if use_cut_order:
+        sorted_shots = sorted(media_data.values(), key=lambda x: (x.get('cut_order') or 999999, x['shot_code']))
+    else:
+        sorted_shots = sorted(media_data.values(), key=lambda x: x['shot_code'])
     
     log("\n=== Resolving Media Paths ===", level=4)
     if not os.path.exists(PROXY_DOWNLOAD_PATH):
@@ -870,6 +945,9 @@ def OnBuild(ev):
             takes_data_list.append(take_path)
         
         if is_missing:
+            if not include_missing_shots:
+                log(f"Skipping {data['shot_code']} -> MISSING MEDIA (Missing Shots is unchecked).")
+                continue
             path = get_missing_media_path()
             log(f"Processing {data['shot_code']} -> MISSING MEDIA. Using placeholder.")
         elif is_web_proxy:
@@ -898,7 +976,10 @@ def OnBuild(ev):
                     
             clip_info = {
                 "mediaPoolItem": existing_clip,
-                "is_hero": is_hero
+                "is_hero": is_hero,
+                "is_missing": is_missing,
+                "shot_code": data['shot_code'],
+                "cut_order": data.get('sg_cut_order')
             }
             if use_audio:
                 clip_info["mediaType"] = 1 # Strip the embedded video audio
@@ -1009,12 +1090,15 @@ def OnBuild(ev):
             print(f"Found latest timeline: {target_timeline.GetName()}. Clearing existing clips...")
             dvr_project.SetCurrentTimeline(target_timeline)
             
+            all_items = []
             for t_type in ['video', 'audio', 'subtitle']:
                 t_count = target_timeline.GetTrackCount(t_type)
                 for t_idx in range(1, t_count + 1):
                     t_items = target_timeline.GetItemListInTrack(t_type, t_idx)
                     if t_items:
-                        target_timeline.DeleteClips(t_items)
+                        all_items.extend(t_items)
+            if all_items:
+                target_timeline.DeleteClips(all_items)
         else:
             # Not using latest -> Increment version
             if is_playlist_mode:
@@ -1044,35 +1128,125 @@ def OnBuild(ev):
     
     if appended_items:
         ensure_luts_installed()
-        print("Applying LUTs to timeline clips (Hero/Non-Hero)...")
+        print("Applying LUTs and Placeholders to timeline clips...")
         try:
             dvr_project.RefreshLUTList()
-            resolve.OpenPage("color")
             exr_lut_exists = ('EXR_LUT' in globals() and EXR_LUT)
             for idx, item in enumerate(appended_items):
                 if idx >= len(video_clip_infos): break
                 info = video_clip_infos[idx]
                 is_hero = info.get("is_hero", True)
+                is_missing = info.get("is_missing", False)
+                shot_code = info.get("shot_code", "UNKNOWN")
+                
+                if is_missing:
+                    print(f"Applying Fusion Title Placeholder to {shot_code}")
+                    fusion_comp = item.AddFusionComp()
+                    if fusion_comp:
+                        bg_node = fusion_comp.AddTool("Background", True)
+                        text_node = fusion_comp.AddTool("TextPlus", True)
+                        merge_node = fusion_comp.AddTool("Merge", True)
+                        
+                        # Set colors (Solid Red)
+                        bg_node.SetInput("TopLeftRed", 1.0)
+                        bg_node.SetInput("TopLeftGreen", 0.0)
+                        bg_node.SetInput("TopLeftBlue", 0.0)
+                        bg_node.SetInput("TopRightRed", 1.0)
+                        bg_node.SetInput("TopRightGreen", 0.0)
+                        bg_node.SetInput("TopRightBlue", 0.0)
+                        bg_node.SetInput("BottomLeftRed", 1.0)
+                        bg_node.SetInput("BottomLeftGreen", 0.0)
+                        bg_node.SetInput("BottomLeftBlue", 0.0)
+                        bg_node.SetInput("BottomRightRed", 1.0)
+                        bg_node.SetInput("BottomRightGreen", 0.0)
+                        bg_node.SetInput("BottomRightBlue", 0.0)
+
+                        # Set text
+                        text_node.SetInput("StyledText", f"NO CLIP\n{shot_code}")
+                        
+                        # Connect them
+                        merge_node.SetInput("Background", bg_node)
+                        merge_node.SetInput("Foreground", text_node)
+                        
+                        # Connect to MediaOut
+                        media_out = fusion_comp.FindTool("MediaOut1")
+                        if media_out:
+                            media_out.SetInput("Input", merge_node)
+                    continue
+
                 is_exr = ".exr" in item.GetName().lower()
-                
                 lut_to_apply = None
-                if is_exr:
-                    if is_hero and use_lut and exr_lut_exists:
-                        lut_to_apply = EXR_LUT
-                    elif not is_hero:
-                        if exr_lut_exists:
-                            basename = os.path.basename(EXR_LUT)
-                            name, ext = os.path.splitext(basename)
-                            lut_to_apply = f"davinciFlow/{name}_bw{ext}"
+                drx_to_apply = None
+
+                proj_key = proj_str.lower()
+                active_config = SHOW_CONFIGS.get(proj_key, SHOW_CONFIGS.get("default", {}))
+                allow_agx = active_config.get("allow_agx", True)
+                apply_agx = use_agx and allow_agx
+
+                if use_agx and not allow_agx:
+                    print(f"Notice: AgX Pipeline ignored for clip '{item.GetName()}' because project '{proj_str}' forbids AgX.")
+
+                if apply_agx:
+                    # AgX Pipeline Logic (configured dynamically via configs/agx.json):
+                    agx_cfg = SHOW_CONFIGS.get("agx", {})
+                    item_name_lower = item.GetName().lower()
+                    
+                    if ".exr" in item_name_lower:
+                        # EXRs require a CST node (ACEScg -> ACEScct) prior to agx_acescct_to_rec709.cube
+                        cst_drx = agx_cfg.get("exr_drx_grade", "AgX_exr_cst.drx")
+                        cst_drx_path = os.path.join(SCRIPT_DIR, "drx", cst_drx)
+                        if os.path.exists(cst_drx_path):
+                            drx_to_apply = cst_drx_path
                         else:
-                            lut_to_apply = "davinciFlow/proxy_bw.cube"
+                            print(f"Warning: AgX EXR CST .drx file not found at {cst_drx_path}")
+                    elif any(ext in item_name_lower for ext in [".png", ".jpg", ".jpeg", ".tga", ".tiff", ".tif"]):
+                        # Stills use sRGB-to-AgX 65^3 cube directly without external DCTL dependencies
+                        lut_to_apply = agx_cfg.get("stills_lut", "davinciFlow/agx_srgb_img.cube")
+                        print(f"Assigning AgX Stills LUT: {lut_to_apply}")
+                    else:
+                        # Video proxies (.mov, .mp4, DNxHD) use Rec709-to-AgX 65^3 cube directly
+                        lut_to_apply = agx_cfg.get("proxy_lut", "davinciFlow/agx_rec709_proxy.cube")
+                        print(f"Assigning AgX Proxy LUT: {lut_to_apply}")
+                elif is_exr and use_img and use_lut:
+                    # Dynamic Project Node Pipeline (e.g. TMNT2)
+                    drx_file = active_config.get("exr_drx_grade", "Acescg.drx")
+                    drx_path = os.path.join(SCRIPT_DIR, "drx", drx_file)
+                    
+                    if os.path.exists(drx_path):
+                        drx_to_apply = drx_path
+                    else:
+                        print(f"Warning: Project DRX file not found at {drx_path}")
                 else:
-                    if not is_hero:
-                        lut_to_apply = "davinciFlow/proxy_bw.cube"
-                
-                if lut_to_apply:
-                    item.SetLUT(1, lut_to_apply)
-            resolve.OpenPage("edit")
+                    # Standard LUT Pipeline Logic
+                    if is_exr:
+                        if is_hero and use_lut and exr_lut_exists:
+                            lut_to_apply = EXR_LUT
+                        elif not is_hero:
+                            if exr_lut_exists:
+                                basename = os.path.basename(EXR_LUT)
+                                name, ext = os.path.splitext(basename)
+                                lut_to_apply = f"davinciFlow/{name}_bw{ext}"
+                            else:
+                                lut_to_apply = "davinciFlow/proxy_bw.cube"
+                    else:
+                        if not is_hero:
+                            lut_to_apply = "davinciFlow/proxy_bw.cube"
+
+                if drx_to_apply:
+                    try:
+                        # 0: "No keyframes", 1: "Source Timecode aligned", 2: "Start Frames aligned"
+                        res = item.GetNodeGraph().ApplyGradeFromDRX(drx_to_apply, 0)
+                        if not res:
+                            print(f"Warning: ApplyGradeFromDRX returned False for {drx_to_apply}. The DRX might be incompatible or the path is invalid.")
+                        else:
+                            print(f"Successfully applied DRX: {drx_to_apply}")
+                    except Exception as e:
+                        print(f"Warning: Failed to apply DRX grade (Exception): {e}")
+                elif lut_to_apply:
+                    try:
+                        item.GetNodeGraph().SetLUT(1, lut_to_apply)
+                    except AttributeError:
+                        item.SetLUT(1, lut_to_apply)
         except Exception as e:
             print(f"Warning: Failed to apply LUTs: {e}")
             
@@ -1135,7 +1309,7 @@ def create_show_shots_handler(target_line_id):
             if not is_playlist_mode:
                 seq = sg.find_one("Sequence", [["code", "is", seq_name], ["project", "is", proj]], ["id"])
                 if not seq: raise Exception("Sequence not found")
-                shots = sg.find("Shot", [["sg_sequence", "is", seq]], ["code"])
+                shots = sg.find("Shot", [["sg_sequence", "is", seq], ["sg_status_list", "is_not", "omt"]], ["code"])
                 codes = sorted([s["code"] for s in shots])
                 win_title = f"Available Shots: {seq_name}"
             else:
@@ -1254,11 +1428,35 @@ def OnCleanCache(ev):
     else:
         print("Cache directory does not exist yet.")
 
+def OnProjectChange(ev):
+    proj_name = items["ProjectCombo"].CurrentText
+    proj_str = proj_name.lower() if proj_name else "default"
+    cfg = SHOW_CONFIGS.get(proj_str, SHOW_CONFIGS.get(proj_name, SHOW_CONFIGS.get("default", {})))
+    allow_agx = cfg.get("allow_agx", True)
+    if not allow_agx:
+        items["AgxCheck"].Checked = False
+        items["AgxCheck"].Enabled = False
+        items["AgxCheck"].ToolTip = f"AgX Pipeline is disabled by show specification ({proj_name})"
+    else:
+        items["AgxCheck"].Enabled = True
+        items["AgxCheck"].ToolTip = "Apply AgX color pipeline instead of standard LUTs"
+        
+    if ev is not None and proj_name:
+        try:
+            items["SeqCombo"].Clear()
+            new_seqs = get_sequences(proj_name)
+            for s in new_seqs:
+                items["SeqCombo"].AddItem(s)
+        except Exception as err:
+            log(f"Error updating sequences for project {proj_name}: {err}", 2)
+
+win.On.ProjectCombo.CurrentIndexChanged = OnProjectChange
 win.On.CleanCacheBtn.Clicked = OnCleanCache
 win.On.BuildBtn.Clicked = OnBuild
 win.On.CancelBtn.Clicked = OnCancel
 win.On.FlowDialog.Close = OnCancel
 win.On.UseHeroCheck.Clicked = OnUseHeroCheck
+win.On.ImageSeqCheck.Clicked = OnImageSeqCheck
 win.On.UsePresetCheck.Clicked = OnPresetCheck
 win.On.ModeCombo.CurrentIndexChanged = OnModeChange
 win.On.FindPlaylistBtn.Clicked = OnFindPlaylistBtn
@@ -1275,6 +1473,9 @@ win.On.AdvancedHeaderBtn.Clicked = create_toggle_handler("AdvancedGrp", "Advance
 # Initialize AdvancedGrp state to hidden
 items["AdvancedGrp"].Hide()
 items["AdvancedHeaderBtn"].Text = "▶ ADVANCED"
+
+# Initialize UI state based on default selected project
+OnProjectChange(None)
 
 # ==========================================
 # EXECUTE UI
