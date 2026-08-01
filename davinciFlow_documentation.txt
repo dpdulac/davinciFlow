@@ -164,6 +164,27 @@ To upgrade legacy OCIO v1 show transforms (such as TMNT2) to modern high-speed p
   2. `tmnt2_acescct_to_rec709_v2.ctf`: Logarithmic `ACEScct` to `SPI_anim` Rec.709 display look.
   3. `tmnt2_config_v2.ocio`: A lightweight, standalone OCIO v2.1 configuration file referencing the native CTF shaders for instant loading in DCCs and DaVinci Resolve.
 
+### Loading `.ctf` and OCIO v2 in DaVinci Resolve
+Because `.ctf` is an active OpenColorIO shader format containing complex mathematical formulas (like `InverseLUT1D`), DaVinci Resolve will **not** list it in the static right-click LUT menu (which only registers table formats like `.cube`, `.3dl`, or `.clf`).
+To load the `.ctf` look in Resolve 21:
+1. Go to the **Color Page** and open the **Effects (OpenFX)** panel.
+2. Under **Resolve FX Color**, drag and drop **OCIO Display** (or **OCIO ColorSpace**) onto your color node.
+3. In the Inspector / Settings panel:
+   - Change **OCIO Config** from Default to **Custom File...** (or **FromFile**).
+   - Browse and select the standalone config file: `/datas/dulacd/tmnt2_config_v2.ocio` (or `/s/prodanim/tmnt2/_sandbox/dulacd/tmnt2_config_v2.ocio`).
+   - Set **Input Color Space**: `ACEScg` (for EXR) or `ACEScct` (for Log).
+   - Set **Display Device**: `Rec.709-Screen`.
+   - Set **View Transform**: `SPI_anim`.
+
+### Dual-Workflow Architecture: Why `.cube` is Slower or Faster than OCIO Display
+When testing timeline performance in DaVinci Resolve, you will notice that using an **OCIO Display** node is significantly slower than applying the baked **`.cube`** 3D LUT. This is intentional and comes down to hardware rendering architecture:
+- **Why OCIO Display (.ctf) is Slower in Resolve**: OpenFX (OFX) plugins execute outside Resolve's ultra-fast core color node loop, adding API overhead per frame. More importantly, executing an OCIO v2 `.ctf` shader requires the GPU to actively compute an 8- to 9-step mathematical chain—performing matrix multiplications, power curves, and iterative floating-point approximations for `InverseLUT1D` tables—per pixel on every single frame.
+- **Why `.cube` is Blazing Fast in Resolve**: When applying a `.cube` LUT directly on a node (or via a CST node), DaVinci Resolve loads the static 3D lookup table directly into GPU video memory as a 3D texture. Resolve's hardware shaders perform instantaneous tetrahedral interpolation with essentially zero computational overhead.
+
+**Industry Standard Recommendation:**
+- **For DaVinci Resolve (Real-Time Review & Editorial)**: Always use the **`CST (ACEScg ➔ ACEScct)` + `tmnt2_acescct_to_rec709.cube`** workflow (automatically applied by `davinciFlow` via `drx/tmnt2_0cio_exr.drx`). Converting scene-linear EXRs into log first preserves >1.0 highlight dynamic range without clipping while delivering smooth real-time 24fps/30fps playback.
+- **For DCCs & Compositing (Nuke / Katana / Houdini / Arnold)**: Use the **`tmnt2_config_v2.ocio` and `.ctf` shaders**. Lighting and compositing software does not rely on real-time editorial playback; instead, they require 100% mathematically exact float32 calculations without table interpolation tolerances.
+
 ---
 
 ## 8. INSTALLATION GUIDE
@@ -186,5 +207,5 @@ If you need to rebuild the `.drx` file for the TMNT2 look, create this specific 
   - Input Gamma: `Linear`
   - Output Color Space: `ACES (AP1)` or `ACEScct`
   - Output Gamma: `ACEScct`
-- **Node 2: 3D LUT or CTF**
-  - Apply either the `davinciFlow/tmnt2_acescct_to_rec709.cube` 3D LUT or the mathematically exact `davinciFlow/tmnt2_acescct_to_rec709_v2.ctf` profile.
+- **Node 2: 3D LUT (Recommended for Real-Time Playback)**
+  - Apply the `davinciFlow/tmnt2_acescct_to_rec709.cube` 3D LUT directly from the right-click LUT menu.
