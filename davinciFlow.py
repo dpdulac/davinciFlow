@@ -492,6 +492,7 @@ layout = ui.VGroup([
     ui.Label({"Weight": 1, "Text": ""}), # Flex spacer to keep footer buttons locked safely at the bottom
     ui.HGroup({'Weight': 0, 'Spacing': 10}, [
         ui.Button({'ID': 'CancelBtn', 'Text': 'Cancel', 'ToolTip': 'Close the tool'}),
+        ui.Button({'ID': 'ToggleMarkersBtn', 'Text': 'Toggle Markers', 'ToolTip': 'Instantly clear or re-apply full-duration departmental markers on the active timeline'}),
         ui.Button({'ID': 'BuildBtn', 'Text': 'Build Sequence', 'ToolTip': 'Fetch media from Flow and construct the timeline'})
     ])
 ]),
@@ -1557,8 +1558,21 @@ def OnBuild(ev):
                             start_f = int(item.GetLeftOffset())
                         except Exception:
                             start_f = int(item.GetStart())
+                        marker_dur = 1
+                        try:
+                            if hasattr(item, "GetDuration"):
+                                marker_dur = int(item.GetDuration())
+                            else:
+                                marker_dur = int(item.GetEnd() - item.GetStart())
+                        except Exception:
+                            try:
+                                marker_dur = int(item.GetEnd() - item.GetStart())
+                            except Exception:
+                                marker_dur = 48
+                        if marker_dur < 1:
+                            marker_dur = 1
                         marker_note = f"Shot: {shot_code}\nTask: {task_label}\nVersion: {ver_label}\nLayer: {track_name}"
-                        item.AddMarker(start_f, clip_color, f"Task: {task_label.upper()}", marker_note, 1)
+                        item.AddMarker(start_f, clip_color, f"Task: {task_label.upper()}", marker_note, marker_dur)
                     except Exception as m_err:
                         log(f"  -> Warning: Failed to apply marker on {shot_code}: {m_err}")
 
@@ -1876,6 +1890,123 @@ def OnCleanCache(ev):
     else:
         print("Cache directory does not exist yet.")
 
+def OnToggleMarkers(ev):
+    try:
+        if not dvr:
+            print("Error: Not inside DaVinci Resolve environment.")
+            return
+        resolve = dvr.scriptapp("Resolve")
+        if not resolve:
+            print("Error: Failed to get DaVinci Resolve scriptapp.")
+            return
+        proj_mgr = resolve.GetProjectManager()
+        curr_proj = proj_mgr.GetCurrentProject() if proj_mgr else None
+        if not curr_proj:
+            print("Error: No active project found.")
+            return
+        curr_tl = curr_proj.GetCurrentTimeline()
+        if not curr_tl:
+            print("Error: No active timeline found.")
+            return
+            
+        track_count = curr_tl.GetTrackCount("video")
+        if not track_count or track_count < 1:
+            print("No video tracks found on active timeline.")
+            return
+
+        # Scan timeline to determine if any markers currently exist
+        any_markers_found = False
+        for t_idx in range(1, track_count + 1):
+            items_list = curr_tl.GetItemListInTrack("video", t_idx) or []
+            for itm in items_list:
+                try:
+                    markers = itm.GetMarkers()
+                    if markers and len(markers) > 0:
+                        any_markers_found = True
+                        break
+                except Exception:
+                    pass
+            if any_markers_found:
+                break
+                
+        if any_markers_found:
+            print("Toggling Markers: Clearing all markers from active timeline...")
+            cleared_count = 0
+            for t_idx in range(1, track_count + 1):
+                items_list = curr_tl.GetItemListInTrack("video", t_idx) or []
+                for itm in items_list:
+                    try:
+                        markers = itm.GetMarkers() or {}
+                        for fid in list(markers.keys()):
+                            itm.DeleteMarker(fid)
+                            cleared_count += 1
+                    except Exception:
+                        pass
+            print(f"-> Successfully removed {cleared_count} markers.")
+        else:
+            print("Toggling Markers: Re-applying full-duration departmental markers to timeline clips...")
+            added_count = 0
+            for t_idx in range(1, track_count + 1):
+                items_list = curr_tl.GetItemListInTrack("video", t_idx) or []
+                for itm in items_list:
+                    try:
+                        name_str = str(itm.GetName() or "").strip()
+                        if "NO CLIP" in name_str or "NO PREV" in name_str or "NO REF" in name_str:
+                            continue
+                        task_str = "REVIEW"
+                        shot_str = name_str
+                        ver_str = ""
+                        clip_color = "Teal"
+                        
+                        if name_str.startswith("[") and "]" in name_str:
+                            parts = name_str.split("]", 1)
+                            task_str = parts[0][1:].strip()
+                            remainder = parts[1].strip().split()
+                            if remainder:
+                                shot_str = remainder[0]
+                                if len(remainder) > 1:
+                                    ver_str = remainder[1]
+                            clip_color = get_task_color(task_str.lower())
+                        else:
+                            try:
+                                curr_col = itm.GetClipColor()
+                                if curr_col and curr_col != "None":
+                                    clip_color = curr_col
+                            except Exception:
+                                pass
+
+                        marker_dur = 1
+                        try:
+                            if hasattr(itm, "GetDuration"):
+                                marker_dur = int(itm.GetDuration())
+                            else:
+                                marker_dur = int(itm.GetEnd() - itm.GetStart())
+                        except Exception:
+                            try:
+                                marker_dur = int(itm.GetEnd() - itm.GetStart())
+                            except Exception:
+                                marker_dur = 48
+                        if marker_dur < 1:
+                            marker_dur = 1
+
+                        start_f = 0
+                        try:
+                            start_f = int(itm.GetLeftOffset())
+                        except Exception:
+                            try:
+                                start_f = int(itm.GetStart())
+                            except Exception:
+                                pass
+                                
+                        note_str = f"Shot: {shot_str}\nTask: {task_str}\nVersion: {ver_str}\nTrack: V{t_idx}"
+                        itm.AddMarker(start_f, clip_color, f"Task: {task_str.upper()}", note_str, marker_dur)
+                        added_count += 1
+                    except Exception:
+                        pass
+            print(f"-> Successfully applied full-duration markers to {added_count} clips.")
+    except Exception as e:
+        print(f"Error toggling markers: {e}")
+
 def OnProjectChange(ev):
     proj_name = items["ProjectCombo"].CurrentText
     proj_str = proj_name.lower() if proj_name else "default"
@@ -1900,6 +2031,7 @@ def OnProjectChange(ev):
 
 win.On.ProjectCombo.CurrentIndexChanged = OnProjectChange
 win.On.CleanCacheBtn.Clicked = OnCleanCache
+win.On.ToggleMarkersBtn.Clicked = OnToggleMarkers
 win.On.BuildBtn.Clicked = OnBuild
 win.On.CancelBtn.Clicked = OnCancel
 win.On.FlowDialog.Close = OnCancel
