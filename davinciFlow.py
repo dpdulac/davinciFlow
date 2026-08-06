@@ -375,11 +375,6 @@ layout = ui.VGroup([
             ui.CheckBox({"ID": "CutOrderCheck", "Checked": True, "ToolTip": "Sort clips by Flow cut order instead of alphabetical", "Weight": 0}),
             ui.Label({"Weight": 1})
         ]),
-        ui.HGroup([
-            ui.Label({"Text": "Add Task Metadata:", "ToolTip": "Attach interactive colored task flags and metadata tooltips directly onto timeline clips", "Weight": 0}),
-            ui.CheckBox({'ID': 'AddTaskMarkersCheck', 'Checked': False, "ToolTip": "Attach interactive colored task flags and metadata tooltips directly onto timeline clips", "Weight": 0}),
-            ui.Label({"Weight": 1})
-        ]),
         ui.HGroup({"ID": "PlaylistGrp"}, [
             ui.Label({"Text": "Playlist:", "Weight": 0}),
             ui.LineEdit({"ID": "PlaylistSearchLine", "PlaceholderText": "e.g. MAY24", "Weight": 1}),
@@ -492,14 +487,14 @@ layout = ui.VGroup([
     ui.Label({"Weight": 1, "Text": ""}), # Flex spacer to keep footer buttons locked safely at the bottom
     ui.HGroup({'Weight': 0, 'Spacing': 10}, [
         ui.Button({'ID': 'CancelBtn', 'Text': 'Cancel', 'ToolTip': 'Close the tool'}),
-        ui.Button({'ID': 'ToggleMarkersBtn', 'Text': 'Toggle Markers', 'ToolTip': 'Instantly clear or re-apply full-duration departmental markers on the active timeline'}),
+        ui.Button({'ID': 'ToggleMarkersBtn', 'Text': 'Shot Info', 'ToolTip': 'Instantly toggle shot info and full-duration departmental markers on the active timeline'}),
         ui.Button({'ID': 'BuildBtn', 'Text': 'Build Sequence', 'ToolTip': 'Fetch media from Flow and construct the timeline'})
     ])
 ]),
 
 win = dispatcher.AddWindow({
     "ID": "FlowDialog",
-    "Geometry": [400, 200, 560, 720],
+    "Geometry": [400, 150, 560, 820],
     "WindowTitle": "Flow to DaVinci Pipeline"
 }, layout)
 
@@ -1030,7 +1025,7 @@ def OnBuild(ev):
     ab_status_val = ab_status_raw.split()[0].strip().lower() if ab_status_raw else "rtk"
     task_wipe_v2 = items["TaskWipeV2Combo"].CurrentText if task_wipe_enabled else None
     task_wipe_v1 = items["TaskWipeV1Combo"].CurrentText if task_wipe_enabled else None
-    add_task_markers = items["AddTaskMarkersCheck"].Checked
+    add_task_markers = True # Enabled by default; toggleable via 'Shot Info' button in UI footer
     use_agx = items["AgxCheck"].Checked
     
     take_combo_text = items["TakeCountCombo"].CurrentText
