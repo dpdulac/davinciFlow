@@ -2,6 +2,13 @@
 
 **Purpose:** This document is designed to act as a highly detailed architectural prompt. If you feed this text to an LLM, it should be able to perfectly recreate the entire `davinciFlow.py` plugin ecosystem from scratch.
 
+> [!IMPORTANT]
+> **CRITICAL DEPLOYMENT & INSTALLATION RULE (DO NOT VIOLATE):**
+> When deploying, copying, or rsyncing scripts to DaVinci Resolve's live installation folder (`/datas/dulacd/DaVinciResolve/Fusion/Scripts/Utility/davinciFlow/` or equivalent Windows/Mac paths):
+> - **ONLY `davinciFlow.py` IS ALLOWED TO EXIST AS A `.py` SCRIPT IN THE RESOLVE UTILITY FOLDER!**
+> - **NEVER copy or sync standalone "outside" scripts (`userpref_manager.py`, `export_agx_pipeline.py`, `export_tmnt2_ocio2_ctf.py`, `bake_tmnt2_acescct_lut.py`, `generate_luts.py`), tests, or launcher scripts (`.bat`/`.sh`) into the Resolve utility script directory.**
+> - **Why?** DaVinci Resolve automatically scans the Utility folder and registers every `.py` file as an executable tool inside its `Workspace -> Scripts -> Utility -> davinciFlow` UI menu. Placing external standalone tools there pollutes the artist's Resolve UI menu with scripts that cannot even be executed from inside Resolve! When syncing updates from GitHub to Resolve, ALWAYS exclude all other `.py` files.
+
 ---
 
 ## CONTEXT & GOAL
@@ -39,8 +46,18 @@ The `AdvancedGrp` must be forced to `.Hide()` state upon initialization!
 - `ProjectCombo`: Dropdown of projects from config.
 - `SeqGrp`: An HGroup containing `SeqCombo` (Sequence numbers).
 - `CutOrderCheck`: Checkbox (labeled "Use Cut Order:") located under the Sequence selection. If checked (default), the script sorts the timeline strictly by `sg_cut_order`. If unchecked, it falls back to alphabetical sorting of the shot codes.
+- `AddTaskMarkersCheck`: Checkbox labeled "Add Task Metadata:" positioned directly below `CutOrderCheck`. When toggled on, appends native interactive DaVinci Resolve marker flags directly to assembled timeline clips containing task and version metadata tooltips.
 - `PlaylistGrp`: An HGroup (hidden by default) containing a `PlaylistSearchLine`, a `FindPlaylistBtn`, and a `PlaylistCombo`. 
   - *Logic*: Clicking `FindPlaylistBtn` queries Flow for playlists containing the typed string and populates `PlaylistCombo`.
+
+**Section: A/B WIPE (`AbWipeGrp`)**
+A dedicated collapsible section directly under FLOW that houses dual-track comparison settings across two mutually exclusive modes:
+- **Version Wipe Row**:
+  - `AbWipeCheck`: Checkbox labeled "Version Wipe (Same Task):". If checked, activates dual-track version comparison mode across both Sequence Mode and Playlist Mode and dynamically enables `AbStatusCombo` (unchecking `TaskWipeCheck`).
+  - `AbStatusCombo`: Dropdown sitting alongside `AbWipeCheck`, greyed out (`Enabled: False`) by default. When active, lets the user choose the required Version status to compare against on Track 1 from all 22 valid studio statuses (`rtk (Retake)` default, `rev`, `chk`, `cmpt`, etc.).
+- **Task Wipe Row**:
+  - `TaskWipeCheck`: Checkbox labeled "Task Wipe (Cross-Task):" (off by default). If checked, activates cross-task dual-track comparison mode and dynamically enables both task selection dropdowns (unchecking `AbWipeCheck`).
+  - `TaskWipeV2Combo` (labeled "Top (V2):") & `TaskWipeV1Combo` (labeled "Bottom (V1):"): Dropdowns side-by-side populated with master tasks, greyed out (`Enabled: False`) by default. When active, queries ShotGrid for the latest published media of `TaskWipeV2Combo` to load onto Track 2 (candidate) and the latest published media of `TaskWipeV1Combo` to load onto Track 1 (reference).
 
 **Section: SHOT**
 This section applies globally to both modes:
@@ -62,14 +79,14 @@ This section applies globally to both modes:
 - `HighestTaskCombo` & `LowestTaskCombo`: Dropdowns side-by-side in an HGroup, populated from the master tasks list.
 - `TaskPresetCombo`: Dropdown populated from `userpref.json` keys.
 
-**Section: TIMELINE (`TakeGrp`)**
-- `TakeCountCombo`: Dropdown ("None (Latest Only)", "Last 2 Versions", "All Versions").
+**Section: TIMELINE (`TimelineGrp`)**
+- `TakeGrp`: An HGroup containing `TakeCountCombo` Dropdown ("None (Latest Only)", "Last 2 Versions", "All Versions"). Hidden when in Playlist Mode.
 - `UseLatestTimeline`: Checkbox to update the latest matching timeline.
 
 **Footer**
 - `CancelBtn` & `BuildBtn` (Build Sequence).
 
-*(Dynamic UI Rule: When `ModeCombo` changes to "Playlist Mode", the script instantly calls `.Hide()` on `SeqGrp`, `TaskGrp`, and `TakeGrp`, and calls `.Show()` on `PlaylistGrp`. Vice versa for Sequence Mode).*
+*(Dynamic UI Rule: When `ModeCombo` changes to "Playlist Mode", the script instantly calls `.Hide()` on `SeqGrp`, `TaskGrp`, and `TakeGrp`, and calls `.Show()` on `PlaylistGrp`. Note that `AbWipeGrp` and `TimelineGrp` remain visible in Playlist Mode so artists can access A/B wiping options and `UseLatestTimeline`).*
 
 ## 3. PATH RESOLUTION, PROXIES & LUTS
 Create a `resolve_path(raw_path)` function:
@@ -103,6 +120,13 @@ When "Build Sequence" is clicked, check the active Mode:
 6. Apply `ShotFilterLine` logic (e.g. if the user only wants shot 0050 out of the 100-shot playlist).
 7. Force the version dictionary to only have one element (no historical takes).
 
+**Multi-Track A/B Version Discovery (`ab_wipe_enabled`, `ab_status`):**
+When A/B version comparison is active, the script selects the reference clip for Track 1 (V1) using a strict 3-tier prioritization hierarchy across both Sequence Mode and Playlist Mode:
+1. **Tier 1 (Targeted Status Prioritization)**: The script inspects historical versions created prior to the current candidate version (preferring versions within the same task). It searches for the most recent version whose `sg_status_list` matches the exact status code selected in `AbStatusCombo` (defaulting to `"rtk"` for Retake, or any other studio status like `"rev"`, `"chk"`, `"dirrev"`, `"clrtk"`, etc.). This promotes official review targets while filtering out unreviewed intermediate artist test renders (e.g., `wip`, `todo`, `ip`).
+2. **Tier 2 (Chronological Predecessor Fallback / "Last Version - 1")**: If none of the earlier takes carry the targeted status flag, the script smoothly falls back to `found_versions[1]` (the immediate chronological predecessor, or "last version - 1"). This ensures Track 1 is never left blank during review sessions whenever earlier versions exist in Flow.
+3. **Tier 3 (No Predecessor Generator Card)**: If the target shot is only at `v001` (or has zero prior versions in the database), the script inserts a temporary MediaPool placeholder tagged with `"placeholder_text": "NO PREV VERSION\n[shot_code]"` matched to the exact frame length of the candidate on Track 2 (utilizing `item.SetMarkInOut(0, 86400)` to unlock Resolve's still image duration limits).
+
+
 ## 5. MEDIA IMPORT & DAVINCI ASSEMBLY
 1. Pre-flight phase: Gather all web proxy downloads where local file doesn't exist. Execute in parallel using `concurrent.futures.ThreadPoolExecutor(max_workers=10)`.
 2. **Timeline Logic**:
@@ -110,8 +134,16 @@ When "Build Sequence" is clicked, check the active Mode:
    - In Playlist Mode: Base name is `{PlaylistName}_vXXX`. If `UseLatestTimeline` is false, it parses the timeline names via regex (`_v(\d{3})$`) to mathematically increment the padding. If true, it clears all the clips in the highest version found.
 3. Import media and takes to Media Pool. *Note: If a shot proxy is missing on disk and `MissingShotCheck` is unchecked, the script skips appending this shot entirely.*
 4. Construct `clip_info` dicts (`{"mediaPoolItem": item, "is_hero": bool, "is_missing": bool, "shot_code": str}`) for `AppendToTimeline()`. Calculate duration: `endFrame = sg_cut_out - sg_cut_in`.
-5. **LUT & Placeholder Application:** Iterate through `appended_items`.
-   - **Missing Shots**: If `is_missing` is True, bypass LUT application. Use `item.AddFusionComp()` to create a local Fusion composition. Generate a solid red `Background` node and a `TextPlus` node containing "NO CLIP\n[shot_code]". Connect them via a `Merge` node to `MediaOut1` to create a dynamic timeline generator (replacing the need for an external .jpg file).
+   - **Dual-Track A/B Wiping Assembly & Duration Sync**: When either `AbWipeCheck` (Version Wiping) or `TaskWipeCheck` (Task Wiping) is enabled (`ab_wipe_enabled = True`), the script constructs two synchronized track lists:
+     1. **Track 1 (V1 - Bottom Reference Layer)**: Appends the discovered `'previous_version'` clip for each shot (either an earlier version/status in Version Wipe mode, or the latest take of `TaskWipeV1Combo` in Task Wipe mode). If a shot has no predecessor or missing reference media, a missing placeholder tagged with `"placeholder_text": "NO PREV VERSION\n[shot_code]"` or `"NO REF TASK [TASK_NAME]\n[shot_code]"` is inserted. To guarantee that still image placeholders do not adopt DaVinci Resolve's default 120-frame (5-second) still duration, the script invokes `item.SetMarkInOut(0, 86400)` on the placeholder `MediaPoolItem` before calling `AppendToTimeline()`. The script then computes the candidate's exact frame duration (`endFrame - startFrame` or via `GetClipProperty("Frames")` fallback) and enforces `startFrame = 0` and `endFrame = duration` on the V1 placeholder.
+     2. **Track 2 (V2 - Top Candidate Layer)**: Adds a second video track (`AddTrack("video")`) and appends the target candidate clips (either current take or latest take of `TaskWipeV2Combo`), matching each clip's `"recordFrame"` directly to the exact starting frame (`GetStart()`) of its corresponding V1 clip to guarantee 100% frame-accurate alignment across both tracks.
+5. **LUT, Node Grade & Placeholder Application:** Iterate through all clips across all active tracks (both V1 and V2 in A/B wiping mode). This ensures universal color evaluation across layers so reviewers can immediately toggle (`D` key) or wipe in Split-Screen mode without mismatched looks!
+   - **Robust Format & EXR Detection for Color Grading**: Because Clip Display Naming renames items to departmental tags (e.g. `[COMPO] 0625_0050 v004`), evaluating `.exr` directly in `timeline_item.GetName()` fails after assembly. To prevent losing color corrections on image sequences during wipe and sequence modes, the script captures original file properties prior to renaming and checks underlying Media Pool item properties (`.GetClipProperty("File Path")` and `"Format"`), guaranteeing that DRX node trees and LUTs apply reliably to EXR sequences in all modes.
+   - **Visual Task Identification on Edit Strip (Colors & Renaming)**: To provide an immediate "at a glance" understanding of which pipeline department a clip comes from without cluttering the Edit timeline strip with long proxy file paths:
+     - **Clip Display Naming**: Before calling `AppendToTimeline()`, the script sets `item.SetClipProperty("Clip Name", f"[{task_name.upper()}] {shot_code} {version_code}")` on both candidate and reference items so every track block clearly prints labels like `[COMPO] 0625_0050 v004` directly across its visual bar.
+     - **Automatic Clip Coloring**: During the post-assembly iteration, the script calls `item.SetClipColor(get_task_color(task))` mapping tasks to standard DaVinci Resolve clip colors (`compo`/`comp` -> `Blue`, `lighting`/`lgt` -> `Yellow`, `animation`/`anim` -> `Green`, `fx` -> `Purple`, `layout` -> `Orange`, others -> `Teal`).
+     - **Interactive Timeline Markers (Toggleable via UI)**: When `AddTaskMarkersCheck` is active, the script invokes `item.AddMarker()` attaching a matching colored marker flag to frame 0 of each assembled clip. Hovering over the flag in Resolve pops up a tooltip displaying Shot, Task, Version, and Track Layer, while allowing supervisors to filter and search clips by department in Resolve's Edit Index Marker tab.
+   - **Missing & Placeholder Shots**: If `is_missing` is True, bypass LUT application. Use `item.AddFusionComp()` to create a local Fusion composition. Generate a solid red `Background` node and a `TextPlus` node displaying either "NO CLIP\n[shot_code]" or "NO PREV VERSION\n[shot_code]". Connect them via a `Merge` node to `MediaOut1` to create a dynamic timeline generator (replacing the need for an external .jpg file).
    - **TMNT2 Pipeline**: If Project is "Tmnt2", file is EXR, and both `ImageSeqCheck` and `ApplyLutCheck` are checked: bypass standard logic and apply the optimized `drx/tmnt2_0cio_exr.drx` node tree (which uses a native Resolve CST to compress ACEScg to ACEScct, followed by the custom `tmnt2_acescct_to_rec709.cube` LUT to apply the look without highlight clipping or slow OCIO playback).
    - **Standard ACEScg Pipeline**: If file is EXR, Project is NOT "Tmnt2", and both `ImageSeqCheck` and `ApplyLutCheck` are checked: apply the `drx/Acescg.drx` node tree (containing standard ACES Color Space Transforms).
    - If EXR and is_hero: Apply standard `exr_lut`.
@@ -218,26 +250,29 @@ All generated standalone OCIO v2 configurations (`tmnt2_config_v2.ocio`, `agx_co
 
 ---
 
-## 8. INSTALLATION GUIDE
+## 8. INSTALLATION & DEPLOYMENT GUIDE
 
-**1. Copy the Scripts & DRX Files:**
-Copy `davinciFlow.py`, `export_tmnt2_ocio2_ctf.py`, and the `drx/` folder to your DaVinci Resolve Fusion Scripts Utility directory:
+**IMPORTANT RULES FOR DAVINCI RESOLVE SCRIPT DIRECTORY:**
+DaVinci Resolve automatically scans any `.py` file placed inside its Utility scripts folder and lists it in the **Workspace > Scripts > Utility** top menu. To prevent menu clutter, artist confusion, and execution errors from running standalone CLI baking tools inside Resolve's Python runtime, **YOU MUST ONLY INSTALL `davinciFlow.py` (along with `configs/`, `drx/`, and JSON config files) INTO RESOLVE'S SCRIPT DIRECTORY!**
+All standalone ("outside") generator and baking scripts (`export_agx_pipeline.py`, `export_tmnt2_ocio2_ctf.py`, `bake_tmnt2_acescct_lut.py`, `generate_luts.py`) must remain safely stored in the GitHub repository and executed from a terminal when color pipeline updates are required.
+
+**1. Installing `davinciFlow` into DaVinci Resolve:**
+Copy **only** `davinciFlow.py`, `davinciFlow_config.json`, `userpref.json`, and the `drx/` and `configs/` directories into your DaVinci Resolve Fusion Scripts Utility directory:
 - Linux: `/datas/dulacd/DaVinciResolve/Fusion/Scripts/Utility/davinciFlow/`
 - Windows: `%APPDATA%\Blackmagic Design\DaVinci Resolve\Support\Fusion\Scripts\Utility\davinciFlow\`
+*(Do NOT copy generator `.py` scripts or heavy `.cube` / `.ctf` / `.ocio` files into this scripts directory).*
 
-**2. Copy the LUTs & CTF Profiles:**
-Copy `tmnt2_acescct_to_rec709.cube`, `tmnt2_native_look_v2.ctf`, and `tmnt2_acescct_to_rec709_v2.ctf` to your DaVinci Resolve LUT directory inside a `davinciFlow` subfolder:
-- Linux: `/datas/dulacd/DaVinciResolve/LUT/davinciFlow/`
+**2. Deploying LUTs & CTF Color Profiles:**
+Copy generated 3D LUTs (`tmnt2_acescct_to_rec709.cube`, `agx_acescct_to_rec709.cube`, `agx_rec709_proxy.cube`, `agx_srgb_img.cube`) into your system DaVinci Resolve LUT directory under a `davinciFlow` subfolder:
+- Linux: `/datas/dulacd/DaVinciResolve/LUT/davinciFlow/` (or `~/.local/share/DaVinciResolve/LUT/davinciFlow/`)
 - Windows: `C:\ProgramData\Blackmagic Design\DaVinci Resolve\Support\LUT\davinciFlow\`
-For standalone DCC usage, copy `tmnt2_config_v2.ocio` and the `.ctf` files to the centralized studio sandbox (`/s/prodanim/studio/_sandbox/dulacd/`) or your workstation root (`/datas/dulacd/`).
+For standalone DCC usage (Nuke 16, Houdini, Katana, Arnold), copy the OCIO profiles (`tmnt2_config_v2.ocio`, `agx_config_v2.ocio`) and native `.ctf` shaders to the centralized studio sandbox (`/s/prodanim/studio/_sandbox/dulacd/`) or workstation root (`/datas/dulacd/`).
 
 **3. Setting up `tmnt2_0cio_exr.drx` for Fast Playback:**
 If you need to rebuild the `.drx` file for the TMNT2 look, create this specific node tree in the Color Page and export it as `tmnt2_0cio_exr.drx` to the plugin's `drx/` folder:
 - **Node 1: Color Space Transform (CST)**
-  - Input Color Space: `ACES (AP1)` or `ACEScg`
-  - Input Gamma: `Linear`
-  - Output Color Space: `ACES (AP1)` or `ACEScct`
-  - Output Gamma: `ACEScct`
+  - Input Color Space: `ACES (AP1)` or `ACEScg` | Input Gamma: `Linear`
+  - Output Color Space: `ACES (AP1)` or `ACEScct` | Output Gamma: `ACEScct`
 - **Node 2: 3D LUT (Recommended for Real-Time Playback)**
   - Apply the `davinciFlow/tmnt2_acescct_to_rec709.cube` 3D LUT directly from the right-click LUT menu.
 
@@ -245,14 +280,45 @@ If you need to rebuild the `.drx` file for the TMNT2 look, create this specific 
 Because EXR files are scene-linear with HDR values above 1.0, applying a LUT directly without log compression would clip high luminance highlights. To create the DCTL-free AgX powergrade for EXRs:
 1. In DaVinci Resolve, select an EXR clip and open the **Color Page**.
 2. Create two serial color nodes:
-   - **Node 1: Color Space Transform (CST)**
-     - Input Color Space: `ACES (AP1)` or `ACEScg` (depending on your scene linear render primaries)
-     - Input Gamma: `Linear`
-     - Output Color Space: `ACES (AP1)` or `ACEScct`
-     - Output Gamma: `ACEScct`
-     - Tone Mapping & Gamut Mapping: None
-   - **Node 2: 3D LUT**
-     - Right-click the node ➔ **LUT** ➔ **davinciFlow** ➔ select **`agx_acescct_to_rec709`**.
-3. Right-click the viewer screen and select **Grab Still**.
-4. In the Stills / PowerGrade Gallery, right-click the thumbnail you just created and select **Export...**.
-5. Save the file as **`AgX_exr_cst.drx`** directly into your `/datas/dulacd/gitHub/davinciFlow/drx/` folder (and make sure to copy it over to your Fusion Scripts utility folder!). When `AgxCheck` is enabled, `davinciFlow` will automatically detect and apply this optimized grade!
+   - **Node 1: Color Space Transform (CST)**: Input `ACEScg` (Linear) ➔ Output `ACEScct` (ACEScct Log). No Tone/Gamut Mapping.
+   - **Node 2: 3D LUT**: Assign **`LUT -> davinciFlow -> agx_acescct_to_rec709`**.
+3. Grab a Still in the Gallery, right-click the thumbnail, select **Export...**, and save as **`AgX_exr_cst.drx`** directly into your `drx/` folder.
+
+---
+
+## 9. STANDALONE ("OUTSIDE") PIPELINE GENERATION SCRIPTS & TOOLS
+
+The GitHub repository (`/datas/dulacd/gitHub/davinciFlow/`) includes several standalone Python pipeline tools designed for external execution from a Linux/Windows terminal or desktop environment. These scripts serve as the foundational color generators and administration utilities for the studio ecosystem. 
+**Why must they be run outside DaVinci Resolve?** Because they manipulate OpenColorIO 2.5.1 C++ bindings, generate high-resolution color lattices via NumPy math, run external PySide6 GUIs, and manage disk-level deployments across studio sandboxes without interacting with Resolve's active project runtime.
+
+> [!CAUTION]
+> **STRICT RESOLVE FOLDER EXCLUSION RULE:** None of the scripts listed below (`userpref_manager.py`, `export_*`, `bake_*`, `generate_*`, or launcher scripts) may ever be present inside DaVinci Resolve's active script installation directory (`/datas/dulacd/DaVinciResolve/Fusion/Scripts/Utility/davinciFlow/`). Any Python script in that folder directly pollutes the DaVinci Resolve menu. Only `davinciFlow.py` belongs in the Resolve application directory!
+
+### 1. `export_agx_pipeline.py` (AgX Color Profile Generator)
+- **Purpose**: A comprehensive color science baker that builds Troy Sobotka's AgX imaging architecture from scratch using OpenColorIO 2.5.1 and NumPy mathematics.
+- **How it Works**: Calculates chromaticity rotation to AgX inset primaries, applies log2 dynamic range encoding (-10.0 EV to +6.5 EV), and computes the custom AgX Punchy filmic tone mapping response.
+- **Outputs**: Produces three ultra-precise `65x65x65` LUTs and `.ctf` transforms (`agx_acescct_to_rec709`, `agx_rec709_proxy`, and `agx_srgb_img`) alongside a master `agx_config_v2.ocio` configuration file.
+- **Execution**: Run from a terminal via `rez env ocio-2.5.1 pyocio-2.5.1 -- python3 /datas/dulacd/gitHub/davinciFlow/export_agx_pipeline.py`.
+
+### 2. `export_tmnt2_ocio2_ctf.py` (TMNT2 OCIO v2 & CTF Upgrader)
+- **Purpose**: Modernizes legacy studio show color transforms (specifically the TMNT2 15-operation OCIO v1 pipeline) into lossless OpenColorIO v2.1 architectures.
+- **How it Works**: Ingests legacy look files and utilizes OCIO's lossless optimization processor (`OPTIMIZATION_LOSSLESS`) to collapse redundant matrices and scaling loops into an efficient 8-9 operation shader chain. Crucially, it exports directly to Autodesk/Academy Color Transform Format (`.ctf`), which natively supports exact algorithmic `InverseLUT1D` evaluation without forcing lossy inversion baking or causing Nuke 16 segmentation faults on non-invertible tone curves.
+- **Outputs**: Generates `tmnt2_native_look_v2.ctf` (Linear ACEScg), `tmnt2_acescct_to_rec709_v2.ctf` (Log ACEScct), and `tmnt2_config_v2.ocio`.
+- **Execution**: Run from a terminal via `rez env ocio-2.5.1 pyocio-2.5.1 -- python3 /datas/dulacd/gitHub/davinciFlow/export_tmnt2_ocio2_ctf.py`.
+
+### 3. `bake_tmnt2_acescct_lut.py` (Real-Time Resolve LUT Baker)
+- **Purpose**: A targeted LUT baking utility engineered explicitly to solve DaVinci Resolve real-time playback bottlenecks. While `.ctf` shaders provide 100% mathematical precision for DCC compositing in Nuke/Katana/Houdini, running OFX OCIO Display shaders in DaVinci Resolve incurs heavy frame-by-frame GPU matrix calculation overhead.
+- **How it Works**: Samples the exact TMNT2 OCIO color transforms across an intermediate logarithmic ACEScct space to bake an unclipped, tetrahedrally interpolatable `65x65x65` 3D cube.
+- **Outputs**: `tmnt2_acescct_to_rec709.cube`, which is loaded directly into GPU texture memory by Resolve's native Color Space Transform nodes (`drx/tmnt2_0cio_exr.drx`) to achieve blazing-fast real-time 24/30fps review playback.
+- **Execution**: Run from a terminal via `rez env ocio-2.5.1 pyocio-2.5.1 -- python3 /datas/dulacd/gitHub/davinciFlow/bake_tmnt2_acescct_lut.py`.
+
+### 4. `generate_luts.py` (Mathematical B&W Review LUT Baker)
+- **Purpose**: Generates high-precision Black & White conversion LUTs used during review sessions when "Review Shots" filtering is active (rendering hero shots in full color and non-hero shots in grayscale to guide directorial focus).
+- **How it Works**: Uses standard ITU-R Rec.709 relative luminance weighting formulas ($L = 0.2126R + 0.7152G + 0.0722B$) across 33³ and 65³ 3D lattices to mathematically transform standard studio look LUTs and proxy color spaces into uniform monochrome profiles without requiring external grading software.
+- **Outputs**: `proxy_bw.cube` and show-specific B&W EXR LUT variants.
+- **Execution**: Run directly via terminal Python: `python3 /datas/dulacd/gitHub/davinciFlow/generate_luts.py`.
+
+### 5. `userpref_manager.py` & Launchers (Artist Preset Desktop GUI)
+- **Purpose**: A standalone PySide6 / Qt graphical user interface that empowers review artists and supervisors to construct, modify, and save custom task discovery hierarchies without manually editing JSON configs.
+- **How it Works**: Reads master tasks and provides an interactive reorderable checklist. Saved presets are written directly to `userpref.json` (or `~/.flowDavinciData/userpref.json`), which `davinciFlow.py` automatically imports to populate the **Task Preset Combo** inside Resolve's UI.
+- **Execution**: Launched as a standalone desktop app before or during editing sessions using the accompanying shell scripts: `./Launch_UserPref_Manager.sh` (Linux/Mac) or `Launch_UserPref_Manager.bat` (Windows).

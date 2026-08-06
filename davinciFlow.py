@@ -224,6 +224,69 @@ def find_clip_in_folder(folder, file_path):
             return clip
     return None
 
+TASK_COLOR_MAP = {
+    "compo": "Blue",
+    "comp": "Blue",
+    "composite": "Blue",
+    "lighting": "Yellow",
+    "lgt": "Yellow",
+    "light": "Yellow",
+    "animation": "Green",
+    "anim": "Green",
+    "fx": "Purple",
+    "effects": "Purple",
+    "layout": "Orange",
+    "layout_anim": "Orange",
+    "rotoscoping": "Pink",
+    "roto": "Pink",
+    "matte_paint": "Teal",
+    "mp": "Teal",
+    "model": "Tan",
+    "modeling": "Tan",
+    "rig": "Beige",
+    "rigging": "Beige"
+}
+
+def get_task_color(task_name):
+    """Maps a studio pipeline task name to a standard DaVinci Resolve clip color."""
+    if not task_name or task_name == "NONE" or task_name == "playlist":
+        return "Teal"
+    clean_task = str(task_name).strip().lower()
+    for key, color in TASK_COLOR_MAP.items():
+        if key in clean_task:
+            return color
+    return "Teal"
+
+
+def unlock_still_image_duration(item):
+    """Enables custom duration trimming for still image placeholders in MediaPool."""
+    if item:
+        try:
+            item.SetMarkInOut(0, 86400)
+        except Exception:
+            pass
+
+def get_media_item_duration(item, default=48):
+    """Retrieves exact frame duration of a MediaPool item if editorial cuts are not in Flow."""
+    if not item:
+        return default
+    try:
+        frames = item.GetClipProperty("Frames")
+        if frames and str(frames).isdigit() and int(frames) > 0:
+            return int(frames)
+    except Exception:
+        pass
+    try:
+        start = item.GetClipProperty("Start")
+        end = item.GetClipProperty("End")
+        if start and end and str(start).isdigit() and str(end).isdigit():
+            dur = int(end) - int(start)
+            if dur > 0:
+                return dur
+    except Exception:
+        pass
+    return default
+
 def ensure_luts_installed():
     import shutil
     if sys.platform == "win32":
@@ -312,6 +375,11 @@ layout = ui.VGroup([
             ui.CheckBox({"ID": "CutOrderCheck", "Checked": True, "ToolTip": "Sort clips by Flow cut order instead of alphabetical", "Weight": 0}),
             ui.Label({"Weight": 1})
         ]),
+        ui.HGroup([
+            ui.Label({"Text": "Add Task Metadata:", "ToolTip": "Attach interactive colored task flags and metadata tooltips directly onto timeline clips", "Weight": 0}),
+            ui.CheckBox({'ID': 'AddTaskMarkersCheck', 'Checked': False, "ToolTip": "Attach interactive colored task flags and metadata tooltips directly onto timeline clips", "Weight": 0}),
+            ui.Label({"Weight": 1})
+        ]),
         ui.HGroup({"ID": "PlaylistGrp"}, [
             ui.Label({"Text": "Playlist:", "Weight": 0}),
             ui.LineEdit({"ID": "PlaylistSearchLine", "PlaceholderText": "e.g. MAY24", "Weight": 1}),
@@ -320,6 +388,24 @@ layout = ui.VGroup([
         ])
     ]),
     
+    # A/B WIPE
+    ui.Button({"ID": "AbWipeHeaderBtn", "Text": "▼ A/B WIPE", "Alignment": {"AlignLeft": True}, "Weight": 0}),
+    ui.VGroup({"ID": "AbWipeGrp", "Weight": 0}, [
+        ui.HGroup([
+            ui.CheckBox({'ID': 'AbWipeCheck', 'Text': 'Version Wipe (Same Task):', 'Checked': False, "ToolTip": "Stack previous version on Track 1 and current version on Track 2 for A/B wiping", "Weight": 0}),
+            ui.HGap(5),
+            ui.ComboBox({'ID': 'AbStatusCombo', 'Enabled': False, 'Weight': 1, "ToolTip": "Select required status of previous version to compare to (default: rtk)"})
+        ]),
+        ui.HGroup([
+            ui.CheckBox({'ID': 'TaskWipeCheck', 'Text': 'Task Wipe (Cross-Task):', 'Checked': False, "ToolTip": "Compare latest version of two distinct tasks across Track 1 and Track 2", "Weight": 0}),
+            ui.HGap(5),
+            ui.Label({'Text': 'Top (V2):', "ToolTip": "Top candidate layer task", "Weight": 0}),
+            ui.ComboBox({'ID': 'TaskWipeV2Combo', 'Enabled': False, 'Weight': 1, "ToolTip": "Top candidate layer task"}),
+            ui.Label({'Text': 'Bottom (V1):', "ToolTip": "Bottom reference layer task", "Weight": 0}),
+            ui.ComboBox({'ID': 'TaskWipeV1Combo', 'Enabled': False, 'Weight': 1, "ToolTip": "Bottom reference layer task"})
+        ])
+    ]),
+
     # SHOT
     ui.Button({"ID": "ShotHeaderBtn", "Text": "▼ SHOT", "Alignment": {"AlignLeft": True}, "Weight": 0}),
     ui.VGroup({"ID": "ShotGrp", "Weight": 0}, [
@@ -380,11 +466,11 @@ layout = ui.VGroup([
     # TIMELINE
     ui.Button({"ID": "TimelineHeaderBtn", "Text": "▼ TIMELINE", "Alignment": {"AlignLeft": True}, "Weight": 0}),
     ui.VGroup({"ID": "TimelineGrp", "Weight": 0}, [
-        ui.HGroup({"ID": "TakeGrp"}, [
-            ui.Label({'Text': 'Load Takes:', "ToolTip": "Choose how many historical versions of a shot to stack into a DaVinci Take"}),
+        ui.HGroup({"ID": "TakeGrp", "Weight": 0}, [
+            ui.Label({'Text': 'Load Takes:', "ToolTip": "Choose how many historical versions of a shot to stack into a DaVinci Take", "Weight": 0}),
             ui.ComboBox({'ID': 'TakeCountCombo', 'Weight': 2, "ToolTip": "Choose how many historical versions of a shot to stack into a DaVinci Take"})
         ]),
-        ui.HGroup([
+        ui.HGroup({"Weight": 0}, [
             ui.Label({'Text': 'Timeline Options:', "ToolTip": "Manage timeline creation", "Weight": 0}),
             ui.CheckBox({'ID': 'UseLatestTimeline', 'Text': 'Update latest timeline (clears existing clips)', 'Checked': True, "ToolTip": "Overwrite the latest matching timeline instead of cluttering your bins with new timelines", "Weight": 0}),
             ui.Label({"Weight": 1})
@@ -394,7 +480,7 @@ layout = ui.VGroup([
     # ADVANCED
     ui.Button({"ID": "AdvancedHeaderBtn", "Text": "▼ ADVANCED", "Alignment": {"AlignLeft": True}, "Weight": 0}),
     ui.VGroup({"ID": "AdvancedGrp", "Weight": 0}, [
-        ui.HGroup([
+        ui.HGroup({"Weight": 0}, [
             ui.CheckBox({"ID": "AgxCheck", "Text": "AgX Pipeline", "Checked": False, "ToolTip": "Apply AgX DRX color grades instead of standard LUTs", "Weight": 0}),
             ui.HGap(5),
             ui.Button({'ID': 'CleanCacheBtn', 'Text': 'Clean Cache', 'ToolTip': 'Delete all downloaded MP4 proxies in the cache directory', 'Weight': 0}),
@@ -402,7 +488,8 @@ layout = ui.VGroup([
         ])
     ]),
     
-    ui.VGap(10),
+    ui.VGap(5),
+    ui.Label({"Weight": 1, "Text": ""}), # Flex spacer to keep footer buttons locked safely at the bottom
     ui.HGroup({'Weight': 0, 'Spacing': 10}, [
         ui.Button({'ID': 'CancelBtn', 'Text': 'Cancel', 'ToolTip': 'Close the tool'}),
         ui.Button({'ID': 'BuildBtn', 'Text': 'Build Sequence', 'ToolTip': 'Fetch media from Flow and construct the timeline'})
@@ -411,7 +498,7 @@ layout = ui.VGroup([
 
 win = dispatcher.AddWindow({
     "ID": "FlowDialog",
-    "Geometry": [400, 400, 550, 600],
+    "Geometry": [400, 200, 560, 720],
     "WindowTitle": "Flow to DaVinci Pipeline"
 }, layout)
 
@@ -427,6 +514,8 @@ for s in initial_sequences:
 for t in MASTER_TASKS:
     items["HighestTaskCombo"].AddItem(t)
     items["LowestTaskCombo"].AddItem(t)
+    items["TaskWipeV2Combo"].AddItem(t)
+    items["TaskWipeV1Combo"].AddItem(t)
 
 if user_presets:
     for preset_name in user_presets.keys():
@@ -442,17 +531,48 @@ items["ModeCombo"].AddItem("Sequence Mode")
 items["ModeCombo"].AddItem("Playlist Mode")
 items["PlaylistGrp"].Hide()
 
+# Populate A/B Wipe Status ComboBox (defaulting to 'rtk')
+ab_status_list = [
+    "rtk (Retake)",
+    "rev (Pending Review)",
+    "rtkd (Retake Done)",
+    "chk (To Check)",
+    "cmpt (Complete)",
+    "dirrev (Pending Director)",
+    "artrev (Pending Art Director)",
+    "hocvfx (Pending HOCA/VFX)",
+    "ip (In Progress)",
+    "todo (Todo)",
+    "rdy (Ready to Start)",
+    "wtg (Waiting to Start)",
+    "cbb (CBB)",
+    "atfn (Autofinal)",
+    "dlypnd (Delivery Pending)",
+    "dlycpt (Delivery_complete)",
+    "frm (On Farm)",
+    "hld (On Hold)",
+    "na (N/A)",
+    "omt (Omit)",
+    "clrtk (Client Retake)",
+    "intrtk (Internal Retake)"
+]
+for st in ab_status_list:
+    items["AbStatusCombo"].AddItem(st)
+items["AbStatusCombo"].CurrentIndex = 0
+
 # Set defaults for task ranges
 if MASTER_TASKS:
     items["HighestTaskCombo"].CurrentIndex = 0
     items["LowestTaskCombo"].CurrentIndex = len(MASTER_TASKS) - 1
+    items["TaskWipeV2Combo"].CurrentIndex = 0
+    items["TaskWipeV1Combo"].CurrentIndex = 1 if len(MASTER_TASKS) > 1 else 0
 
 # ==========================================
 # FETCH DATA
 # ==========================================
 PROJECT_CACHE = {}
 
-def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use_audio, max_versions, target_shots=None, exclude_mode=False, is_playlist_mode=False, playlist_name=None):
+def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use_audio, max_versions, target_shots=None, exclude_mode=False, is_playlist_mode=False, playlist_name=None, ab_wipe_enabled=False, ab_status="rtk", ver_wipe_enabled=False, task_wipe_enabled=False, task_wipe_v2=None, task_wipe_v1=None):
     log(f"Connecting to Flow as '{SCRIPT_NAME}'...")
     try:
         sg = shotgun_api3.Shotgun(FLOW_URL, script_name=SCRIPT_NAME, api_key=SCRIPT_KEY)
@@ -478,7 +598,7 @@ def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use
             return None
             
         v_ids = [v["id"] for v in pl["versions"]]
-        versions = retry_sg(lambda: sg.find("Version", [["id", "in", v_ids]], ["code", "sg_path_to_movie", "sg_path_to_frames", "sg_uploaded_movie_mp4", "created_at", "entity"]))
+        versions = retry_sg(lambda: sg.find("Version", [["id", "in", v_ids]], ["code", "sg_path_to_movie", "sg_path_to_frames", "sg_uploaded_movie_mp4", "created_at", "entity", "sg_task", "sg_status_list"]))
         
         # We need shot info (cut in/out) for these versions
         shot_ids = list(set([v["entity"]["id"] for v in versions if v.get("entity") and v["entity"]["type"] == "Shot"]))
@@ -501,6 +621,24 @@ def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use
                 return None
                 
         shot_dict = {s["id"]: s for s in shots}
+        
+        prev_versions_by_shot = {}
+        if ab_wipe_enabled and shots:
+            log("Querying previous published versions for Playlist A/B wiping...")
+            all_shot_versions = retry_sg(lambda: sg.find(
+                "Version",
+                [["project", "is", project], ["entity", "in", shots]],
+                ["id", "code", "sg_path_to_movie", "sg_path_to_frames", "sg_uploaded_movie_mp4", "created_at", "entity", "sg_task", "sg_status_list"]
+            ))
+            by_shot = {}
+            for sv in all_shot_versions:
+                s_id = sv.get("entity", {}).get("id")
+                if s_id:
+                    by_shot.setdefault(s_id, []).append(sv)
+            for s_id, vlist in by_shot.items():
+                vlist.sort(key=lambda x: str(x.get("created_at") or ""), reverse=True)
+                prev_versions_by_shot[s_id] = vlist
+
         final_data = {}
         
         for v in versions:
@@ -524,17 +662,62 @@ def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use
             else:
                 is_web_proxy = False
                 
+            previous_version = None
+            if ab_wipe_enabled:
+                vlist = prev_versions_by_shot.get(shot_data["id"], [])
+                chosen_prev = None
+                if task_wipe_enabled and task_wipe_v1:
+                    task_b_cands = [sv for sv in vlist if (sv.get("sg_task") and sv.get("sg_task", {}).get("name") == task_wipe_v1)]
+                    if task_b_cands:
+                        chosen_prev = task_b_cands[0]
+                        log(f"  [{shot_code}] V1 Task Wipe: Found latest '{task_wipe_v1}' version '{chosen_prev.get('code')}'")
+                    else:
+                        log(f"  [{shot_code}] V1 Task Wipe: No media found for reference task '{task_wipe_v1}'")
+                        previous_version = {'path': 'MISSING', 'is_web_proxy': False, 'code': '', 'task': task_wipe_v1, 'placeholder_text': f"NO REF TASK [{task_wipe_v1.upper()}]\n{shot_code}"}
+                else:
+                    v_created = str(v.get("created_at") or "")
+                    v_task = v.get("sg_task", {}).get("name") if v.get("sg_task") else None
+                    prev_candidates = [sv for sv in vlist if str(sv.get("created_at") or "") < v_created and sv["id"] != v["id"]]
+                    same_task_candidates = [sv for sv in prev_candidates if (sv.get("sg_task") and sv.get("sg_task", {}).get("name") == v_task)]
+                    candidates_pool = same_task_candidates if same_task_candidates else prev_candidates
+                    if candidates_pool:
+                        target_status = str(ab_status or "rtk").lower()
+                        retake_cands = [sv for sv in candidates_pool if str(sv.get("sg_status_list") or "").lower() == target_status]
+                        if retake_cands:
+                            chosen_prev = retake_cands[0]
+                            log(f"  [{shot_code}] V1 A/B Wipe: Prioritized targeted version '{chosen_prev.get('code')}' (status: {chosen_prev.get('sg_status_list')})")
+                        else:
+                            chosen_prev = candidates_pool[0]
+                            log(f"  [{shot_code}] V1 A/B Wipe: No status '{target_status}' found. Fallback to immediate predecessor '{chosen_prev.get('code')}'")
+                if chosen_prev:
+                    p_mov_prev = resolve_path(chosen_prev.get('sg_path_to_movie'))
+                    p_frm_prev = resolve_path(chosen_prev.get('sg_path_to_frames'))
+                    p_mp4_prev = chosen_prev.get('sg_uploaded_movie_mp4')
+                    p_target_prev = p_frm_prev if (use_image_seq and p_frm_prev) else p_mov_prev
+                    prev_is_web = False
+                    if not p_target_prev and p_mp4_prev:
+                        p_url = p_mp4_prev.get('url') if isinstance(p_mp4_prev, dict) else p_mp4_prev
+                        if p_url:
+                            p_target_prev = p_url
+                            prev_is_web = True
+                    if p_target_prev:
+                        prev_task_name = chosen_prev.get("sg_task", {}).get("name") if chosen_prev.get("sg_task") else (v.get("sg_task", {}).get("name") if v.get("sg_task") else "NONE")
+                        previous_version = {'path': p_target_prev, 'is_web_proxy': prev_is_web, 'code': chosen_prev.get('code', ''), 'task': prev_task_name}
+
+            v_task_val = v.get("sg_task", {}).get("name") if v.get("sg_task") else "playlist"
             final_data[shot_code] = {
                 'shot_id': shot_data['id'],
                 'shot_code': shot_code,
-                'task': 'playlist',
+                'task': v_task_val,
+                'version_code': v.get('code', ''),
                 'path': target_path,
                 'cut_in': shot_data.get('sg_cut_in'),
                 'cut_out': shot_data.get('sg_cut_out'),
                 'head_in': shot_data.get('sg_head_in'),
                 'is_web_proxy': is_web_proxy,
                 'takes': [],  # No historical takes in playlist mode
-                'cut_order': shot_data.get('sg_cut_order')
+                'cut_order': shot_data.get('sg_cut_order'),
+                'previous_version': previous_version
             }
             
         return final_data
@@ -587,13 +770,14 @@ def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use
     
     # valid_tasks is already passed as argument
     
-    # Query all versions for these shots in the valid tasks
+    # Query all versions for these shots in the valid tasks (including Task Wipe targets if active)
+    query_tasks = list(set((valid_tasks or []) + ([task_wipe_v2, task_wipe_v1] if task_wipe_enabled else [])))
     v_filters = [
         ['project', 'is', project],
         ['entity', 'in', shots],
-        ['sg_task.Task.content', 'in', valid_tasks]
+        ['sg_task.Task.content', 'in', query_tasks]
     ]
-    v_fields = ['entity', 'code', 'sg_path_to_movie', 'sg_path_to_frames', 'created_at', 'sg_uploaded_movie_mp4', 'sg_task']
+    v_fields = ['entity', 'code', 'sg_path_to_movie', 'sg_path_to_frames', 'created_at', 'sg_uploaded_movie_mp4', 'sg_task', 'sg_status_list']
     versions = retry_sg(lambda: sg.find('Version', v_filters, v_fields))
     
     # Sort newest first
@@ -612,27 +796,20 @@ def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use
                 audio_path = p
                 break
         
-        for task in valid_tasks:
-            if found_media:
-                break
-                
+        def get_shot_task_versions(target_task):
             found_versions_dict = {}
-            
             for v in versions:
                 v_shot_id = v.get('entity', {}).get('id')
                 v_task_name = v.get('sg_task', {}).get('name')
-                
-                if v_shot_id == shot_id and v_task_name == task:
+                if v_shot_id == shot_id and v_task_name == target_task:
                     path_to_use = None
                     is_web_proxy = False
-                    
                     if use_image_seq:
                         raw_path = v.get('sg_path_to_frames')
                         if raw_path:
                             win_path = resolve_path(raw_path)
                             if win_path and os.path.exists(os.path.dirname(win_path)):
                                 path_to_use = os.path.dirname(win_path)
-                    
                     if not path_to_use:
                         raw_path = v.get('sg_path_to_movie')
                         if raw_path:
@@ -646,58 +823,106 @@ def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use
                                     if web_url:
                                         path_to_use = web_url
                                         is_web_proxy = True
-                                    
                     if path_to_use:
                         v_code = v.get('code', '') or ''
                         base_v_code = v_code.lower().replace('-mjpeg', '').replace('-dnxhd', '').replace('.mov', '')
-                        
                         existing = found_versions_dict.get(base_v_code)
                         score = 2 if 'dnxhd' in path_to_use.lower() or 'dnxhd' in v_code.lower() else 1
-                        
                         if not existing or score > existing['score']:
                             found_versions_dict[base_v_code] = {
                                 'path': path_to_use,
                                 'is_web_proxy': is_web_proxy,
                                 'score': score,
-                                'created_at': v.get('created_at') or ''
+                                'created_at': v.get('created_at') or '',
+                                'status': str(v.get('sg_status_list') or '').lower(),
+                                'code': v.get('code', '')
                             }
-                        
             if found_versions_dict:
-                found_versions = list(found_versions_dict.values())
-                found_versions.sort(key=lambda x: x['created_at'], reverse=True)
-                
-                if max_versions > 0:
-                    found_versions = found_versions[:max_versions]
-                    
-                base_ver = found_versions[0]
-                takes_list = found_versions[1:]
-                
+                res = list(found_versions_dict.values())
+                res.sort(key=lambda x: str(x['created_at']), reverse=True)
+                return res
+            return []
+
+        previous_version = None
+        if task_wipe_enabled and task_wipe_v2 and task_wipe_v1:
+            top_cands = get_shot_task_versions(task_wipe_v2)
+            ref_cands = get_shot_task_versions(task_wipe_v1)
+            if ref_cands:
+                pv = ref_cands[0]
+                previous_version = {'path': pv['path'], 'is_web_proxy': pv['is_web_proxy'], 'code': pv.get('code', ''), 'task': task_wipe_v1}
+                log(f"  [{shot_code}] V1 Task Wipe: Found reference '{task_wipe_v1}' version '{pv['code']}'")
+            else:
+                previous_version = {'path': 'MISSING', 'is_web_proxy': False, 'code': '', 'task': task_wipe_v1, 'placeholder_text': f"NO REF TASK [{task_wipe_v1.upper()}]\n{shot_code}"}
+                log(f"  [{shot_code}] V1 Task Wipe: No media found for reference task '{task_wipe_v1}'")
+
+            if top_cands:
+                base_ver = top_cands[0]
                 media_dict[shot_id] = {
                     'shot_code': shot_code,
-                    'task': task,
+                    'task': task_wipe_v2,
+                    'version_code': base_ver.get('code', ''),
                     'path': base_ver['path'],
                     'audio_path': audio_path,
                     'is_web_proxy': base_ver['is_web_proxy'],
-                    'takes': takes_list,
+                    'takes': top_cands[1:] if max_versions != 1 else [],
                     'cut_in': shot_data.get('sg_cut_in'),
                     'cut_out': shot_data.get('sg_cut_out'),
                     'head_in': shot_data.get('sg_head_in'),
-                    'cut_order': shot_data.get('sg_cut_order')
+                    'cut_order': shot_data.get('sg_cut_order'),
+                    'previous_version': previous_version
                 }
                 found_media = True
-                break 
+        else:
+            for task in valid_tasks:
+                if found_media:
+                    break
+                found_versions = get_shot_task_versions(task)
+                if found_versions:
+                    previous_version = None
+                    if ab_wipe_enabled and len(found_versions) >= 2:
+                        target_status = str(ab_status or "rtk").lower()
+                        retake_vers = [pv for pv in found_versions[1:] if pv.get('status') == target_status]
+                        if retake_vers:
+                            pv = retake_vers[0]
+                            log(f"  [{shot_code}] V1 A/B Wipe: Prioritized targeted version '{pv['code']}' (status: {pv['status']})")
+                        else:
+                            pv = found_versions[1]
+                            log(f"  [{shot_code}] V1 A/B Wipe: No status '{target_status}' found. Fallback to immediate predecessor '{pv['code']}'")
+                        previous_version = {'path': pv['path'], 'is_web_proxy': pv['is_web_proxy'], 'code': pv.get('code', ''), 'task': task}
+                    
+                    if max_versions > 0:
+                        found_versions = found_versions[:max_versions]
+                    base_ver = found_versions[0]
+                    media_dict[shot_id] = {
+                        'shot_code': shot_code,
+                        'task': task,
+                        'version_code': base_ver.get('code', ''),
+                        'path': base_ver['path'],
+                        'audio_path': audio_path,
+                        'is_web_proxy': base_ver['is_web_proxy'],
+                        'takes': found_versions[1:],
+                        'cut_in': shot_data.get('sg_cut_in'),
+                        'cut_out': shot_data.get('sg_cut_out'),
+                        'head_in': shot_data.get('sg_head_in'),
+                        'cut_order': shot_data.get('sg_cut_order'),
+                        'previous_version': previous_version
+                    }
+                    found_media = True
+                    break 
                         
         if not found_media:
             media_dict[shot_id] = {
                 'shot_code': shot_code,
-                'task': 'NONE',
+                'task': task_wipe_v2 if task_wipe_enabled else 'NONE',
+                'version_code': '',
                 'path': 'MISSING',
                 'audio_path': audio_path,
                 'is_web_proxy': False,
                 'cut_in': shot_data.get('sg_cut_in'),
                 'cut_out': shot_data.get('sg_cut_out'),
                 'head_in': shot_data.get('sg_head_in'),
-                'cut_order': shot_data.get('sg_cut_order')
+                'cut_order': shot_data.get('sg_cut_order'),
+                'previous_version': previous_version
             }
                         
     return media_dict
@@ -722,6 +947,22 @@ def OnUseHeroCheck(ev):
 def OnImageSeqCheck(ev):
     checked = items["ImageSeqCheck"].Checked
     items["ApplyLutCheck"].Enabled = checked
+
+def OnAbWipeCheck(ev):
+    checked = items["AbWipeCheck"].Checked
+    items["AbStatusCombo"].Enabled = checked
+    if checked and "TaskWipeCheck" in items:
+        items["TaskWipeCheck"].Checked = False
+        items["TaskWipeV2Combo"].Enabled = False
+        items["TaskWipeV1Combo"].Enabled = False
+
+def OnTaskWipeCheck(ev):
+    checked = items["TaskWipeCheck"].Checked
+    items["TaskWipeV2Combo"].Enabled = checked
+    items["TaskWipeV1Combo"].Enabled = checked
+    if checked and "AbWipeCheck" in items:
+        items["AbWipeCheck"].Checked = False
+        items["AbStatusCombo"].Enabled = False
 
 def OnModeChange(ev):
     mode = items["ModeCombo"].CurrentText
@@ -781,6 +1022,14 @@ def OnBuild(ev):
     include_missing_shots = items["MissingShotCheck"].Checked
     use_cut_order = items["CutOrderCheck"].Checked
     use_latest_timeline = items["UseLatestTimeline"].Checked
+    ver_wipe_enabled = items["AbWipeCheck"].Checked
+    task_wipe_enabled = items["TaskWipeCheck"].Checked if "TaskWipeCheck" in items else False
+    ab_wipe_enabled = (ver_wipe_enabled or task_wipe_enabled)
+    ab_status_raw = items["AbStatusCombo"].CurrentText if ver_wipe_enabled else "rtk"
+    ab_status_val = ab_status_raw.split()[0].strip().lower() if ab_status_raw else "rtk"
+    task_wipe_v2 = items["TaskWipeV2Combo"].CurrentText if task_wipe_enabled else None
+    task_wipe_v1 = items["TaskWipeV1Combo"].CurrentText if task_wipe_enabled else None
+    add_task_markers = items["AddTaskMarkersCheck"].Checked
     use_agx = items["AgxCheck"].Checked
     
     take_combo_text = items["TakeCountCombo"].CurrentText
@@ -867,7 +1116,13 @@ def OnBuild(ev):
         target_shots=target_shots,
         exclude_mode=exclude_mode,
         is_playlist_mode=is_playlist_mode,
-        playlist_name=playlist_name
+        playlist_name=playlist_name,
+        ab_wipe_enabled=ab_wipe_enabled,
+        ab_status=ab_status_val,
+        ver_wipe_enabled=ver_wipe_enabled,
+        task_wipe_enabled=task_wipe_enabled,
+        task_wipe_v2=task_wipe_v2,
+        task_wipe_v1=task_wipe_v1
     )
     if not media_data:
         log("No media data gathered.", level=2)
@@ -883,6 +1138,7 @@ def OnBuild(ev):
     media_pool.SetCurrentFolder(media_bin)
     
     video_clip_infos = []
+    v1_reference_clip_infos = []
     audio_clip_infos = []
     pending_takes_to_attach = []
     
@@ -911,6 +1167,13 @@ def OnBuild(ev):
             local_proxy_path = os.path.join(PROXY_DOWNLOAD_PATH, safe_name)
             if not os.path.exists(local_proxy_path):
                 download_tasks.append((data['path'], local_proxy_path, safe_name))
+                
+        prev_v = data.get('previous_version')
+        if prev_v and prev_v.get('is_web_proxy') and prev_v.get('path'):
+            safe_prev_name = f"{data['shot_code']}_prev_{prev_v.get('code', 'v1')}_proxy.mp4"
+            local_prev_path = os.path.join(PROXY_DOWNLOAD_PATH, safe_prev_name)
+            if not os.path.exists(local_prev_path):
+                download_tasks.append((prev_v['path'], local_prev_path, safe_prev_name))
                 
     # Phase 2: Download them all in parallel!
     if download_tasks:
@@ -974,17 +1237,44 @@ def OnBuild(ev):
                 else:
                     is_hero = reverse_hero
                     
+            is_clip_exr = False
+            orig_name = str(existing_clip.GetName() or "").lower()
+            fpath = ""
+            ffmt = ""
+            try:
+                fpath = str(existing_clip.GetClipProperty("File Path") or "").lower()
+                ffmt = str(existing_clip.GetClipProperty("Format") or "").lower()
+            except Exception:
+                pass
+            if ".exr" in orig_name or ".exr" in fpath or "exr" in ffmt or (use_img and not is_missing and not is_web_proxy):
+                is_clip_exr = True
+                    
+            task_label = str(data.get('task', 'NONE')).strip()
+            ver_label = str(data.get('version_code', '')).strip()
+            if existing_clip and not is_missing and task_label not in ['NONE', 'playlist']:
+                try:
+                    display_name = f"[{task_label.upper()}] {data['shot_code']} {ver_label}".strip()
+                    existing_clip.SetClipProperty("Clip Name", display_name)
+                except Exception:
+                    pass
+
             clip_info = {
                 "mediaPoolItem": existing_clip,
                 "is_hero": is_hero,
                 "is_missing": is_missing,
                 "shot_code": data['shot_code'],
-                "cut_order": data.get('sg_cut_order')
+                "cut_order": data.get('sg_cut_order'),
+                "task": task_label,
+                "version_code": ver_label,
+                "is_exr": is_clip_exr,
+                "is_web_proxy": is_web_proxy,
+                "original_name": orig_name
             }
             if use_audio:
                 clip_info["mediaType"] = 1 # Strip the embedded video audio
                 
             if is_missing:
+                unlock_still_image_duration(existing_clip)
                 clip_info["startFrame"] = 0
                 if data.get('cut_in') is not None and data.get('cut_out') is not None:
                     duration = int(data['cut_out']) - int(data['cut_in'])
@@ -1010,6 +1300,73 @@ def OnBuild(ev):
                         print(f"  -> Applying Video constraint: {duration} frames (0 to {duration})")
                 
             video_clip_infos.append(clip_info)
+            
+            if ab_wipe_enabled:
+                prev_info = dict(clip_info)
+                prev_v = data.get('previous_version')
+                prev_clip = None
+                if prev_v and prev_v.get('path') and prev_v.get('path') != 'MISSING':
+                    prev_path = prev_v['path']
+                    if prev_v.get('is_web_proxy'):
+                        safe_prev_name = f"{data['shot_code']}_prev_{prev_v.get('code', 'v1')}_proxy.mp4"
+                        prev_path = os.path.join(PROXY_DOWNLOAD_PATH, safe_prev_name)
+                    prev_clip = find_clip_in_folder(movies_bin, prev_path)
+                    if not prev_clip and os.path.exists(prev_path):
+                        media_pool.SetCurrentFolder(movies_bin)
+                        imp_p = media_pool.ImportMedia([prev_path])
+                        if imp_p: prev_clip = imp_p[0]
+                
+                if prev_clip:
+                    prev_is_exr = False
+                    orig_prev_name = str(prev_clip.GetName() or "").lower()
+                    prev_fpath = ""
+                    prev_ffmt = ""
+                    try:
+                        prev_fpath = str(prev_clip.GetClipProperty("File Path") or "").lower()
+                        prev_ffmt = str(prev_clip.GetClipProperty("Format") or "").lower()
+                    except Exception:
+                        pass
+                    if ".exr" in orig_prev_name or ".exr" in prev_fpath or "exr" in prev_ffmt or (use_img and not (prev_v and prev_v.get('is_web_proxy', False))):
+                        prev_is_exr = True
+
+                    prev_info["mediaPoolItem"] = prev_clip
+                    prev_info["is_missing"] = False
+                    prev_info["is_exr"] = prev_is_exr
+                    prev_info["is_web_proxy"] = prev_v.get('is_web_proxy', False) if prev_v else False
+                    prev_info["original_name"] = orig_prev_name
+                    if "placeholder_text" in prev_info:
+                        del prev_info["placeholder_text"]
+                    prev_task_label = str(prev_v.get('task') if (prev_v and prev_v.get('task')) else data.get('task', 'NONE')).strip()
+                    prev_ver_label = str(prev_v.get('code', '') if prev_v else '').strip()
+                    prev_info["task"] = prev_task_label
+                    prev_info["version_code"] = prev_ver_label
+                    if prev_task_label not in ['NONE', 'playlist']:
+                        try:
+                            prev_display = f"[{prev_task_label.upper()}] {data['shot_code']} {prev_ver_label}".strip()
+                            prev_clip.SetClipProperty("Clip Name", prev_display)
+                        except Exception:
+                            pass
+                else:
+                    missing_path = get_missing_media_path()
+                    missing_item = find_clip_in_folder(movies_bin, missing_path)
+                    if not missing_item and os.path.exists(missing_path):
+                        media_pool.SetCurrentFolder(movies_bin)
+                        imp_m = media_pool.ImportMedia([missing_path])
+                        if imp_m: missing_item = imp_m[0]
+                    if missing_item:
+                        prev_info["mediaPoolItem"] = missing_item
+                        unlock_still_image_duration(missing_item)
+                    prev_info["is_missing"] = True
+                    prev_info["is_exr"] = False
+                    prev_info["placeholder_text"] = (prev_v.get("placeholder_text") if (prev_v and prev_v.get("placeholder_text")) else f"NO PREV VERSION\n{data['shot_code']}")
+                    if "endFrame" in clip_info and "startFrame" in clip_info:
+                        cand_dur = int(clip_info["endFrame"]) - int(clip_info["startFrame"])
+                    else:
+                        cand_dur = get_media_item_duration(clip_info.get("mediaPoolItem"), 48)
+                    prev_info["startFrame"] = 0
+                    prev_info["endFrame"] = max(1, cand_dur)
+                    log(f"  -> Synchronized V1 placeholder duration to {cand_dur} frames to match candidate.")
+                v1_reference_clip_infos.append(prev_info)
             
             # Now process takes
             if takes_data_list:
@@ -1123,24 +1480,93 @@ def OnBuild(ev):
     if target_timeline:
         dvr_project.SetCurrentTimeline(target_timeline)
     
-    print(f"Appending {len(video_clip_infos)} video clips to timeline...")
-    appended_items = media_pool.AppendToTimeline(video_clip_infos)
+    if ab_wipe_enabled:
+        logging.info(f"A/B Wiping Mode: Appending {len(v1_reference_clip_infos)} previous/placeholder clips to Track 1 (V1)...")
+        print(f"A/B Wiping Mode: Appending {len(v1_reference_clip_infos)} previous/placeholder clips to Track 1 (V1)...")
+        media_pool.AppendToTimeline(v1_reference_clip_infos)
+        appended_items = []
+        all_grading_items = []
+        
+        if target_timeline:
+            v1_track_items = target_timeline.GetItemListInTrack("video", 1) or []
+            
+            if target_timeline.GetTrackCount('video') < 2:
+                target_timeline.AddTrack("video")
+                
+            logging.info(f"A/B Wiping Mode: Appending {len(video_clip_infos)} candidate clips to Track 2 (V2)...")
+            print(f"A/B Wiping Mode: Appending {len(video_clip_infos)} candidate clips to Track 2 (V2)...")
+            v2_submission = []
+            for idx, cand_info in enumerate(video_clip_infos):
+                c_copy = dict(cand_info)
+                if idx < len(v1_track_items):
+                    c_copy["recordFrame"] = int(v1_track_items[idx].GetStart())
+                c_copy["trackIndex"] = 2
+                v2_submission.append(c_copy)
+                
+            media_pool.AppendToTimeline(v2_submission)
+            
+            # Reliably pull fresh timeline items directly from Track 1 and Track 2
+            v1_track_items = target_timeline.GetItemListInTrack("video", 1) or []
+            v2_track_items = target_timeline.GetItemListInTrack("video", 2) or []
+            
+            appended_items = v2_track_items # Preserve V2 items for optional Takes attachments
+            
+            for idx, v1_item in enumerate(v1_track_items):
+                if idx < len(v1_reference_clip_infos):
+                    all_grading_items.append((v1_item, v1_reference_clip_infos[idx], "V1"))
+                    
+            for idx, v2_item in enumerate(v2_track_items):
+                if idx < len(video_clip_infos):
+                    all_grading_items.append((v2_item, video_clip_infos[idx], "V2"))
+    else:
+        logging.info(f"Appending {len(video_clip_infos)} video clips to timeline...")
+        print(f"Appending {len(video_clip_infos)} video clips to timeline...")
+        media_pool.AppendToTimeline(video_clip_infos)
+        appended_items = target_timeline.GetItemListInTrack("video", 1) if target_timeline else []
+        if not appended_items: appended_items = []
+        all_grading_items = [(item, video_clip_infos[idx], "V1") for idx, item in enumerate(appended_items) if idx < len(video_clip_infos)]
     
-    if appended_items:
+    if all_grading_items:
         ensure_luts_installed()
-        print("Applying LUTs and Placeholders to timeline clips...")
+        msg = f"Applying LUTs, DRX Node Grades, and Placeholders to {len(all_grading_items)} timeline clips across all tracks..."
+        print(msg)
+        logging.info(msg)
         try:
             dvr_project.RefreshLUTList()
             exr_lut_exists = ('EXR_LUT' in globals() and EXR_LUT)
-            for idx, item in enumerate(appended_items):
-                if idx >= len(video_clip_infos): break
-                info = video_clip_infos[idx]
+            for item, info, track_name in all_grading_items:
                 is_hero = info.get("is_hero", True)
                 is_missing = info.get("is_missing", False)
                 shot_code = info.get("shot_code", "UNKNOWN")
                 
+                task_label = info.get("task", "NONE")
+                ver_label = info.get("version_code", "")
+                clip_color = get_task_color(task_label)
+
+                # Apply timeline clip color
+                try:
+                    item.SetClipColor(clip_color)
+                except Exception:
+                    pass
+
+                # Apply clip markers if enabled by UI toggle
+                if add_task_markers and not is_missing and task_label not in ['NONE', 'playlist']:
+                    try:
+                        start_f = 0
+                        try:
+                            start_f = int(item.GetLeftOffset())
+                        except Exception:
+                            start_f = int(item.GetStart())
+                        marker_note = f"Shot: {shot_code}\nTask: {task_label}\nVersion: {ver_label}\nLayer: {track_name}"
+                        item.AddMarker(start_f, clip_color, f"Task: {task_label.upper()}", marker_note, 1)
+                    except Exception as m_err:
+                        log(f"  -> Warning: Failed to apply marker on {shot_code}: {m_err}")
+
                 if is_missing:
-                    print(f"Applying Fusion Title Placeholder to {shot_code}")
+                    placeholder_str = info.get("placeholder_text", f"NO CLIP\n{shot_code}")
+                    p_msg = f"Track {track_name} [{shot_code}]: Applying Fusion Title Placeholder: {placeholder_str.replace(chr(10), ' - ')}"
+                    print(p_msg)
+                    logging.info(p_msg)
                     fusion_comp = item.AddFusionComp()
                     if fusion_comp:
                         bg_node = fusion_comp.AddTool("Background", True)
@@ -1160,9 +1586,9 @@ def OnBuild(ev):
                         bg_node.SetInput("BottomRightRed", 1.0)
                         bg_node.SetInput("BottomRightGreen", 0.0)
                         bg_node.SetInput("BottomRightBlue", 0.0)
-
+                        
                         # Set text
-                        text_node.SetInput("StyledText", f"NO CLIP\n{shot_code}")
+                        text_node.SetInput("StyledText", placeholder_str)
                         
                         # Connect them
                         merge_node.SetInput("Background", bg_node)
@@ -1174,7 +1600,20 @@ def OnBuild(ev):
                             media_out.SetInput("Input", merge_node)
                     continue
 
-                is_exr = ".exr" in item.GetName().lower()
+                item_name_lower = str(item.GetName() or "").lower()
+                mp_path = ""
+                mp_fmt = ""
+                mp_name = ""
+                try:
+                    mp_item = item.GetMediaPoolItem()
+                    if mp_item:
+                        mp_path = str(mp_item.GetClipProperty("File Path") or "").lower()
+                        mp_fmt = str(mp_item.GetClipProperty("Format") or "").lower()
+                        mp_name = str(mp_item.GetName() or "").lower()
+                except Exception:
+                    pass
+                
+                is_exr = info.get("is_exr", False) or ".exr" in item_name_lower or ".exr" in mp_path or "exr" in mp_fmt or ".exr" in mp_name or (use_img and not is_missing and not info.get("is_web_proxy", False))
                 lut_to_apply = None
                 drx_to_apply = None
 
@@ -1189,9 +1628,8 @@ def OnBuild(ev):
                 if apply_agx:
                     # AgX Pipeline Logic (configured dynamically via configs/agx.json):
                     agx_cfg = SHOW_CONFIGS.get("agx", {})
-                    item_name_lower = item.GetName().lower()
                     
-                    if ".exr" in item_name_lower:
+                    if is_exr:
                         # EXRs require a CST node (ACEScg -> ACEScct) prior to agx_acescct_to_rec709.cube
                         cst_drx = agx_cfg.get("exr_drx_grade", "AgX_exr_cst.drx")
                         cst_drx_path = os.path.join(SCRIPT_DIR, "drx", cst_drx)
@@ -1199,15 +1637,13 @@ def OnBuild(ev):
                             drx_to_apply = cst_drx_path
                         else:
                             print(f"Warning: AgX EXR CST .drx file not found at {cst_drx_path}")
-                    elif any(ext in item_name_lower for ext in [".png", ".jpg", ".jpeg", ".tga", ".tiff", ".tif"]):
+                    elif any(ext in str(info.get("original_name", "")) or ext in mp_path or ext in mp_name or ext in item_name_lower for ext in [".png", ".jpg", ".jpeg", ".tga", ".tiff", ".tif"]):
                         # Stills use sRGB-to-AgX 65^3 cube directly without external DCTL dependencies
                         lut_to_apply = agx_cfg.get("stills_lut", "davinciFlow/agx_srgb_img.cube")
-                        print(f"Assigning AgX Stills LUT: {lut_to_apply}")
                     else:
                         # Video proxies (.mov, .mp4, DNxHD) use Rec709-to-AgX 65^3 cube directly
                         lut_to_apply = agx_cfg.get("proxy_lut", "davinciFlow/agx_rec709_proxy.cube")
-                        print(f"Assigning AgX Proxy LUT: {lut_to_apply}")
-                elif is_exr and use_img and use_lut:
+                elif is_exr and use_lut:
                     # Dynamic Project Node Pipeline (e.g. TMNT2)
                     drx_file = active_config.get("exr_drx_grade", "Acescg.drx")
                     drx_path = os.path.join(SCRIPT_DIR, "drx", drx_file)
@@ -1236,19 +1672,30 @@ def OnBuild(ev):
                     try:
                         # 0: "No keyframes", 1: "Source Timecode aligned", 2: "Start Frames aligned"
                         res = item.GetNodeGraph().ApplyGradeFromDRX(drx_to_apply, 0)
-                        if not res:
-                            print(f"Warning: ApplyGradeFromDRX returned False for {drx_to_apply}. The DRX might be incompatible or the path is invalid.")
-                        else:
-                            print(f"Successfully applied DRX: {drx_to_apply}")
+                        g_msg = f"Track {track_name} [{shot_code}]: Applied DRX {drx_to_apply} -> {res}"
+                        print(g_msg)
+                        logging.info(g_msg)
                     except Exception as e:
-                        print(f"Warning: Failed to apply DRX grade (Exception): {e}")
+                        err_msg = f"Warning: Track {track_name} [{shot_code}]: Failed to apply DRX grade: {e}"
+                        print(err_msg)
+                        logging.warning(err_msg)
                 elif lut_to_apply:
                     try:
-                        item.GetNodeGraph().SetLUT(1, lut_to_apply)
-                    except AttributeError:
-                        item.SetLUT(1, lut_to_apply)
+                        try:
+                            item.GetNodeGraph().SetLUT(1, lut_to_apply)
+                        except AttributeError:
+                            item.SetLUT(1, lut_to_apply)
+                        l_msg = f"Track {track_name} [{shot_code}]: Applied LUT {lut_to_apply}"
+                        print(l_msg)
+                        logging.info(l_msg)
+                    except Exception as e:
+                        l_err = f"Warning: Track {track_name} [{shot_code}]: Failed to apply LUT: {e}"
+                        print(l_err)
+                        logging.warning(l_err)
         except Exception as e:
-            print(f"Warning: Failed to apply LUTs: {e}")
+            err = f"Warning: Failed during grading loop: {e}"
+            print(err)
+            logging.error(err)
             
     if appended_items and pending_takes_to_attach:
         print("Attaching previous versions as Takes...")
@@ -1393,6 +1840,7 @@ def create_show_shots_handler(target_line_id):
 
 UI_STATE = {
     "FlowGrp": True,
+    "AbWipeGrp": True,
     "ShotGrp": True,
     "FileGrp": True,
     "TaskGrp": True,
@@ -1457,6 +1905,8 @@ win.On.CancelBtn.Clicked = OnCancel
 win.On.FlowDialog.Close = OnCancel
 win.On.UseHeroCheck.Clicked = OnUseHeroCheck
 win.On.ImageSeqCheck.Clicked = OnImageSeqCheck
+win.On.AbWipeCheck.Clicked = OnAbWipeCheck
+win.On.TaskWipeCheck.Clicked = OnTaskWipeCheck
 win.On.UsePresetCheck.Clicked = OnPresetCheck
 win.On.ModeCombo.CurrentIndexChanged = OnModeChange
 win.On.FindPlaylistBtn.Clicked = OnFindPlaylistBtn
@@ -1464,6 +1914,7 @@ win.On.AllShotsCheck.Clicked = OnAllShotsCheck
 win.On.ShowShotsBtn.Clicked = create_show_shots_handler("ShotFilterLine")
 win.On.ShowReviewShotsBtn.Clicked = create_show_shots_handler("HeroFilterLine")
 win.On.FlowHeaderBtn.Clicked = create_toggle_handler("FlowGrp", "FlowHeaderBtn", "FLOW")
+win.On.AbWipeHeaderBtn.Clicked = create_toggle_handler("AbWipeGrp", "AbWipeHeaderBtn", "A/B WIPE")
 win.On.ShotHeaderBtn.Clicked = create_toggle_handler("ShotGrp", "ShotHeaderBtn", "SHOT")
 win.On.FileHeaderBtn.Clicked = create_toggle_handler("FileGrp", "FileHeaderBtn", "FILE")
 win.On.TaskHeaderBtn.Clicked = create_toggle_handler("TaskGrp", "TaskHeaderBtn", "TASKS")

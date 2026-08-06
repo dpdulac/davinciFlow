@@ -5,6 +5,8 @@ A powerful python bridge between ShotGrid (Flow) and DaVinci Resolve.
 ## Features
 - **Sequence Assembly:** Live fetches latest media from Flow based on `Sequence` and `Tasks` filters.
 - **Playlist Assembly:** Direct integration with ShotGrid Playlists, dynamically bypassing the Task hierarchy to load explicitly approved versions.
+- **Multi-Track A/B & Task Wiping:** Enable dual-track assembly in both Sequence and Playlist modes to compare versions or distinct pipeline departments (e.g. compo vs lighting). Places reference shots on Track 1 (V1) and candidate shots on Track 2 (V2) with 100% frame-accurate duration synchronization, status filtering (22 Flow statuses), and automatic Fusion Text placeholders (`"NO PREV VERSION"` or `"NO REF TASK"`).
+- **Visual Task Identification:** Automatically customizes clip colors on the timeline by pipeline department (Compo=Blue, Lighting=Yellow, Anim=Green, FX=Purple) and sets clean display titles (`[TASK] shot version`). Includes optional interactive marker flags at frame 0 for tooltip inspection and Edit Index filtering.
 - **Dynamic B&W / Review Shots:** Define specific shots as "Review Shots". The script applies your studio LUT to Hero shots, and mathematically generated B&W LUTs to Non-Hero shots.
 - **Automated Timelines:** Creates timelines dynamically. In Sequence mode, it uses `{Seq}_YYYY_MM_DD`. In Playlist mode, it generates mathematical `{Playlist}_vXXX` sequences.
 - **Historical Takes:** Stacks previous version iterations into DaVinci "Takes" under the primary clips.

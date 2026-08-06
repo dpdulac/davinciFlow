@@ -1,14 +1,19 @@
-1. Un-Hardcoding "TMNT2" (Dynamic Show Configs)
-   - Move all show-specific logic (which .drx to use, ShotGrid filters, color pipelines) into a config.json (or multiple .json files per show).
-   - Read the ShotGrid project name and dynamically load the correct rules.
+1. [IMPLEMENTED] Un-Hardcoding "TMNT2" (Dynamic Show Configs)
+   - Moved all show-specific logic into a dynamic JSON/dict configuration structure (SHOW_CONFIGS, including agx.json, default, and tmnt2).
+   - Dynamically evaluates allow_agx and project-level DRX color nodes based on Project name.
 
-2. Multi-Track Versioning (A/B Wiping)
-   - Query ShotGrid for the previous approved version of a shot.
-   - Place the old version on Video Track 1 and the new version on Video Track 2 to allow the reviewer to instantly toggle and A/B wipe between versions.
+2. [IMPLEMENTED] Multi-Track A/B Wiping (Version Wipe & Task Wipe)
+   - Supported across both Sequence Mode and Playlist Mode via a dedicated collapsible "A/B WIPE" UI section.
+   - Version Wipe: Compares current candidate against an earlier version of the same task, filtering by any of the 22 valid ShotGrid statuses (e.g. rtk, rev, chk).
+   - Task Wipe: Compares latest version of two distinct tasks (Top V2 candidate vs Bottom V1 reference) with mutually exclusive toggles.
+   - Places reference takes on Track 1 (V1) and target candidate takes on Track 2 (V2) with 100% frame-accurate alignment.
+   - Generates synchronized red Fusion Title placeholders ("NO PREV VERSION\n[shot_code]" or "NO REF TASK [TASK_NAME]\n[shot_code]") on V1 for missing reference media.
+   - Robust Format Detection: Reliably evaluates media pool properties independent of customized display clip names to ensure uniform color grading (.drx nodes, AgX, or LUTs) applies across all layers.
 
-3. Automatic Timeline Markers from ShotGrid
-   - Pull "Director Notes" or "Review Notes" from ShotGrid when importing a shot.
-   - Automatically create DaVinci Resolve Timeline Markers directly on the clips containing these notes for easy context.
+3. [IMPLEMENTED] Visual Task Identification & Timeline Markers
+   - Automatically colors clips on the timeline strip by pipeline department (e.g., compo->Blue, lighting->Yellow, anim->Green).
+   - Renames timeline item display labels to cleanly format department tags directly across visual track blocks: `[TASK] shot version`.
+   - Optional toggleable timeline marker flags attached to frame 0 displaying full Shot, Task, Version, and Track Layer metadata in tooltips and Edit Index.
 
 4. Advanced Fusion Burn-ins / Data Slates
    - Expand the Fusion placeholder logic to create data burn-ins on all clips.
