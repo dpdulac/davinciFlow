@@ -1892,15 +1892,11 @@ def OnCleanCache(ev):
 
 def OnToggleMarkers(ev):
     try:
-        if not dvr:
-            print("Error: Not inside DaVinci Resolve environment.")
-            return
-        resolve = dvr.scriptapp("Resolve")
         if not resolve:
-            print("Error: Failed to get DaVinci Resolve scriptapp.")
+            print("Error: No DaVinci Resolve instance found.")
             return
         proj_mgr = resolve.GetProjectManager()
-        curr_proj = proj_mgr.GetCurrentProject() if proj_mgr else None
+        curr_proj = proj_mgr.GetCurrentProject() if proj_mgr else dvr_project
         if not curr_proj:
             print("Error: No active project found.")
             return
@@ -1909,7 +1905,7 @@ def OnToggleMarkers(ev):
             print("Error: No active timeline found.")
             return
             
-        track_count = curr_tl.GetTrackCount("video")
+        track_count = int(curr_tl.GetTrackCount("video") or 0)
         if not track_count or track_count < 1:
             print("No video tracks found on active timeline.")
             return
@@ -1938,11 +1934,23 @@ def OnToggleMarkers(ev):
                     try:
                         markers = itm.GetMarkers() or {}
                         for fid in list(markers.keys()):
-                            itm.DeleteMarker(fid)
-                            cleared_count += 1
+                            try:
+                                itm.DeleteMarker(int(fid))
+                                cleared_count += 1
+                            except Exception:
+                                try:
+                                    itm.DeleteMarker(fid)
+                                    cleared_count += 1
+                                except Exception:
+                                    pass
+                        try:
+                            if hasattr(itm, "DeleteMarkersByColor"):
+                                itm.DeleteMarkersByColor("All")
+                        except Exception:
+                            pass
                     except Exception:
                         pass
-            print(f"-> Successfully removed {cleared_count} markers.")
+            print(f"-> Successfully removed markers from {cleared_count} clips.")
         else:
             print("Toggling Markers: Re-applying full-duration departmental markers to timeline clips...")
             added_count = 0
@@ -1999,8 +2007,16 @@ def OnToggleMarkers(ev):
                                 pass
                                 
                         note_str = f"Shot: {shot_str}\nTask: {task_str}\nVersion: {ver_str}\nTrack: V{t_idx}"
-                        itm.AddMarker(start_f, clip_color, f"Task: {task_str.upper()}", note_str, marker_dur)
-                        added_count += 1
+                        marker_added = False
+                        for candidate_f in [start_f, 0, int(itm.GetStart() if hasattr(itm, 'GetStart') else 0)]:
+                            try:
+                                itm.AddMarker(candidate_f, clip_color, f"Task: {task_str.upper()}", note_str, marker_dur)
+                                marker_added = True
+                                break
+                            except Exception:
+                                continue
+                        if marker_added:
+                            added_count += 1
                     except Exception:
                         pass
             print(f"-> Successfully applied full-duration markers to {added_count} clips.")
