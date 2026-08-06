@@ -950,7 +950,7 @@ def fetch_and_attach_flow_notes(sorted_shots):
             "Note",
             [["note_links", "in", entity_links]],
             ["content", "user", "created_at", "subject", "note_links"],
-            order=[{"field": "created_at", "direction": "desc"}],
+            order=[{"field_name": "created_at", "direction": "desc"}],
             limit=300
         )) or []
 
