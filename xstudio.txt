@@ -1,0 +1,76 @@
+================================================================================
+                    xStudioFlow: PORTING ROADMAP & NOTES
+================================================================================
+
+This document outlines the architecture, strategy, and roadmap for developing 
+an equivalent script to `davinciFlow` for DNEG's open-source review playback 
+platform, **xStudio**.
+
+--------------------------------------------------------------------------------
+1. PROJECT GOAL & INCREMENTAL STRATEGY
+--------------------------------------------------------------------------------
+The objective is to translate the core ShotGrid/Flow production tracking and 
+media assembly logic from `davinciFlow.py` into an automated media ingestion 
+and playlist/timeline builder for **xStudio**.
+
+**PHASE 1: THE MVP (Start Here)**
+Do not attempt to rebuild all features simultaneously. Start small:
+1. Re-use the existing `shotgun_api3` connection and project/sequence/playlist 
+   querying logic from `davinciFlow.py`.
+2. Build a simple interactive interface allowing the user to pick a Project, 
+   Sequence/Playlist, and target Pipeline Tasks (or Task Presets).
+3. Connect to xStudio and programmatically load the resolved movie clips (MP4/DNxHD) 
+   and EXR image sequences into an active xStudio playlist/timeline.
+4. Add advanced functionalities (A/B wiping tracks, color profiles, notes) step by step.
+
+--------------------------------------------------------------------------------
+2. KEY ARCHITECTURAL DIFFERENCES & PORTING ADVANTAGES
+--------------------------------------------------------------------------------
+xStudio is built from the ground up specifically as a VFX review and dailies 
+player, making it a natural fit for pipeline TD integration:
+
+A. **OpenTimelineIO (OTIO) & Robust Python API:**
+   - Unlike DaVinci Resolve's restrictive NLE API, xStudio offers a comprehensive 
+     Python API with an actor-model architecture.
+   - xStudio natively supports **OpenTimelineIO (OTIO)**. Instead of manually 
+     calculating frame padding and forcing clips one-by-one onto tracks, we can 
+     construct a clean `.otio` timeline object in Python mapping candidate tracks 
+     and reference layers (for A/B wiping), and hand it directly to xStudio.
+
+B. **Native Review Notes & Annotations:**
+   - In DaVinci Resolve, review notes had to be injected into clip metadata fields 
+     and visualized using Pink duration marker bands ("Flow Notes").
+   - In xStudio, there is a dedicated native UI panel for Notes and Annotations. 
+     Using the API, we can inject retrieved Director and VFX Supervisor comments 
+     directly into xStudio's review notes engine, associating them with specific 
+     frames or clips cleanly.
+
+C. **Native OpenColorIO (OCIO) Pipeline:**
+   - In Resolve, we had to generate mathematical B&W `.cube` LUTs, inject `.drx` 
+     Fusion node trees, and manage Color Space Transforms (CST) to view ACEScg/AgX EXRs.
+   - xStudio utilizes **OpenColorIO (OCIO)** natively. We can eliminate LUT baking 
+     and simply assign the proper OCIO color space (ACEScg, AgX, or custom show configs) 
+     directly to the media objects via the API.
+
+D. **Remote Control (Network Socket API):**
+   - xStudio allows Python scripts to either run internally within its session or 
+     externally via a network socket connection.
+   - This opens up the possibility to build a powerful standalone desktop UI 
+     (e.g., in PyQt/PySide) that remotely controls xStudio to load clips, change 
+     playlists, and jump to specific takes without freezing the player UI.
+
+--------------------------------------------------------------------------------
+3. WHAT TO RE-USE FROM `davinciFlow`
+--------------------------------------------------------------------------------
+When building the script for xStudio, heavily reference the existing codebase 
+in this repository:
+- **`davinciFlow.py`**: 
+  - `shotgun_api3` connection and query formatting (note: always use `"field_name"` 
+    instead of `"field"` when sorting with `order=`).
+  - Concurrent web proxy file downloading using `concurrent.futures.ThreadPoolExecutor`.
+  - Batch review notes retrieval using `note_links` in a single `sg.find` call.
+  - Task priority sorting, "Hero" take identification, and task preset grouping.
+- **`davinciFlow_config.json`**: Re-use the existing Flow URLs, script keys, 
+  and base download path structures.
+- **`configs/*.json` & `userpref.json`**: Re-use the show override system and 
+  user customizable preset formats.
