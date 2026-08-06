@@ -488,6 +488,7 @@ layout = ui.VGroup([
     ui.HGroup({'Weight': 0, 'Spacing': 10}, [
         ui.Button({'ID': 'CancelBtn', 'Text': 'Cancel', 'ToolTip': 'Close the tool'}),
         ui.Button({'ID': 'ToggleMarkersBtn', 'Text': 'Shot Info', 'ToolTip': 'Instantly toggle shot info and full-duration departmental markers on the active timeline'}),
+        ui.Button({'ID': 'ToggleNotesBtn', 'Text': 'Flow Notes', 'ToolTip': 'Instantly toggle Director & Supervisor review notes on active timeline clips'}),
         ui.Button({'ID': 'BuildBtn', 'Text': 'Build Sequence', 'ToolTip': 'Fetch media from Flow and construct the timeline'})
     ])
 ]),
@@ -698,7 +699,7 @@ def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use
                             prev_is_web = True
                     if p_target_prev:
                         prev_task_name = chosen_prev.get("sg_task", {}).get("name") if chosen_prev.get("sg_task") else (v.get("sg_task", {}).get("name") if v.get("sg_task") else "NONE")
-                        previous_version = {'path': p_target_prev, 'is_web_proxy': prev_is_web, 'code': chosen_prev.get('code', ''), 'task': prev_task_name}
+                        previous_version = {'path': p_target_prev, 'is_web_proxy': prev_is_web, 'code': chosen_prev.get('code', ''), 'task': prev_task_name, 'version_id': chosen_prev.get('id')}
 
             v_task_val = v.get("sg_task", {}).get("name") if v.get("sg_task") else "playlist"
             final_data[shot_code] = {
@@ -706,6 +707,7 @@ def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use
                 'shot_code': shot_code,
                 'task': v_task_val,
                 'version_code': v.get('code', ''),
+                'version_id': v.get('id'),
                 'path': target_path,
                 'cut_in': shot_data.get('sg_cut_in'),
                 'cut_out': shot_data.get('sg_cut_out'),
@@ -826,6 +828,7 @@ def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use
                         score = 2 if 'dnxhd' in path_to_use.lower() or 'dnxhd' in v_code.lower() else 1
                         if not existing or score > existing['score']:
                             found_versions_dict[base_v_code] = {
+                                'id': v.get('id'),
                                 'path': path_to_use,
                                 'is_web_proxy': is_web_proxy,
                                 'score': score,
@@ -845,7 +848,7 @@ def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use
             ref_cands = get_shot_task_versions(task_wipe_v1)
             if ref_cands:
                 pv = ref_cands[0]
-                previous_version = {'path': pv['path'], 'is_web_proxy': pv['is_web_proxy'], 'code': pv.get('code', ''), 'task': task_wipe_v1}
+                previous_version = {'path': pv['path'], 'is_web_proxy': pv['is_web_proxy'], 'code': pv.get('code', ''), 'task': task_wipe_v1, 'version_id': pv.get('id')}
                 log(f"  [{shot_code}] V1 Task Wipe: Found reference '{task_wipe_v1}' version '{pv['code']}'")
             else:
                 previous_version = {'path': 'MISSING', 'is_web_proxy': False, 'code': '', 'task': task_wipe_v1, 'placeholder_text': f"NO REF TASK [{task_wipe_v1.upper()}]\n{shot_code}"}
@@ -857,6 +860,7 @@ def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use
                     'shot_code': shot_code,
                     'task': task_wipe_v2,
                     'version_code': base_ver.get('code', ''),
+                    'version_id': base_ver.get('id'),
                     'path': base_ver['path'],
                     'audio_path': audio_path,
                     'is_web_proxy': base_ver['is_web_proxy'],
@@ -884,7 +888,7 @@ def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use
                         else:
                             pv = found_versions[1]
                             log(f"  [{shot_code}] V1 A/B Wipe: No status '{target_status}' found. Fallback to immediate predecessor '{pv['code']}'")
-                        previous_version = {'path': pv['path'], 'is_web_proxy': pv['is_web_proxy'], 'code': pv.get('code', ''), 'task': task}
+                        previous_version = {'path': pv['path'], 'is_web_proxy': pv['is_web_proxy'], 'code': pv.get('code', ''), 'task': task, 'version_id': pv.get('id')}
                     
                     if max_versions > 0:
                         found_versions = found_versions[:max_versions]
@@ -893,6 +897,7 @@ def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use
                         'shot_code': shot_code,
                         'task': task,
                         'version_code': base_ver.get('code', ''),
+                        'version_id': base_ver.get('id'),
                         'path': base_ver['path'],
                         'audio_path': audio_path,
                         'is_web_proxy': base_ver['is_web_proxy'],
@@ -922,6 +927,64 @@ def fetch_flow_data(project_name, sequence_name, valid_tasks, use_image_seq, use
             }
                         
     return media_dict
+
+def fetch_and_attach_flow_notes(sorted_shots):
+    """Perform a single batch query to ShotGrid to fetch review notes for all version IDs in the timeline."""
+    try:
+        v_ids = set()
+        for s in sorted_shots:
+            vid = s.get("version_id")
+            if vid:
+                v_ids.add(int(vid))
+            prev_v = s.get("previous_version")
+            if prev_v and isinstance(prev_v, dict):
+                p_vid = prev_v.get("version_id")
+                if p_vid:
+                    v_ids.add(int(p_vid))
+        if not v_ids:
+            return
+
+        log(f"\nFetching review comments from Flow for {len(v_ids)} timeline versions...", level=4)
+        entity_links = [{"type": "Version", "id": vid} for vid in v_ids]
+        notes = retry_sg(lambda: sg.find(
+            "Note",
+            [["note_links", "in", entity_links]],
+            ["content", "user", "created_at", "subject", "note_links"],
+            order=[{"field": "created_at", "direction": "desc"}],
+            limit=300
+        )) or []
+
+        notes_by_version = {}
+        for n in notes:
+            content = str(n.get("content") or "").strip()
+            if not content:
+                continue
+            user_info = n.get("user", {})
+            user_name = user_info.get("name") if isinstance(user_info, dict) else (str(user_info) if user_info else "Reviewer")
+            created_str = str(n.get("created_at") or "")[:10] # YYYY-MM-DD
+            formatted_note = f"[{user_name} - {created_str}]:\n{content}"
+            
+            links = n.get("note_links") or []
+            for lnk in links:
+                if isinstance(lnk, dict) and lnk.get("type") == "Version":
+                    v_id = lnk.get("id")
+                    if v_id:
+                        if len(notes_by_version.setdefault(v_id, [])) < 3: # Limit to 3 most recent comments
+                            notes_by_version[v_id].append(formatted_note)
+
+        # Attach compiled comments back onto sorted_shots
+        for s in sorted_shots:
+            vid = s.get("version_id")
+            if vid and vid in notes_by_version:
+                s["comments"] = "\n\n".join(notes_by_version[vid]).strip()
+            prev_v = s.get("previous_version")
+            if prev_v and isinstance(prev_v, dict):
+                p_vid = prev_v.get("version_id")
+                if p_vid and p_vid in notes_by_version:
+                    prev_v["comments"] = "\n\n".join(notes_by_version[p_vid]).strip()
+        log("-> Successfully retrieved and linked Flow review comments!", level=4)
+    except Exception as e:
+        log(f"Warning: Failed to fetch Flow review notes: {e}", level=1)
 
 # ==========================================
 # EVENT HANDLERS
@@ -1142,6 +1205,8 @@ def OnBuild(ev):
         sorted_shots = sorted(media_data.values(), key=lambda x: (x.get('cut_order') or 999999, x['shot_code']))
     else:
         sorted_shots = sorted(media_data.values(), key=lambda x: x['shot_code'])
+        
+    fetch_and_attach_flow_notes(sorted_shots)
     
     log("\n=== Resolving Media Paths ===", level=4)
     if not os.path.exists(PROXY_DOWNLOAD_PATH):
@@ -1247,12 +1312,18 @@ def OnBuild(ev):
                     
             task_label = str(data.get('task', 'NONE')).strip()
             ver_label = str(data.get('version_code', '')).strip()
-            if existing_clip and not is_missing and task_label not in ['NONE', 'playlist']:
-                try:
-                    display_name = f"[{task_label.upper()}] {data['shot_code']} {ver_label}".strip()
-                    existing_clip.SetClipProperty("Clip Name", display_name)
-                except Exception:
-                    pass
+            if existing_clip and not is_missing:
+                if data.get('comments'):
+                    try:
+                        existing_clip.SetClipProperty("Comments", data['comments'])
+                    except Exception:
+                        pass
+                if task_label not in ['NONE', 'playlist']:
+                    try:
+                        display_name = f"[{task_label.upper()}] {data['shot_code']} {ver_label}".strip()
+                        existing_clip.SetClipProperty("Clip Name", display_name)
+                    except Exception:
+                        pass
 
             clip_info = {
                 "mediaPoolItem": existing_clip,
@@ -1336,6 +1407,11 @@ def OnBuild(ev):
                     prev_ver_label = str(prev_v.get('code', '') if prev_v else '').strip()
                     prev_info["task"] = prev_task_label
                     prev_info["version_code"] = prev_ver_label
+                    if prev_v and prev_v.get('comments'):
+                        try:
+                            prev_clip.SetClipProperty("Comments", prev_v['comments'])
+                        except Exception:
+                            pass
                     if prev_task_label not in ['NONE', 'playlist']:
                         try:
                             prev_display = f"[{prev_task_label.upper()}] {data['shot_code']} {prev_ver_label}".strip()
@@ -2018,6 +2094,136 @@ def OnToggleMarkers(ev):
     except Exception as e:
         print(f"Error toggling markers: {e}")
 
+def OnToggleFlowNotes(ev):
+    try:
+        if not resolve:
+            print("Error: No DaVinci Resolve instance found.")
+            return
+        proj_mgr = resolve.GetProjectManager()
+        curr_proj = proj_mgr.GetCurrentProject() if proj_mgr else dvr_project
+        if not curr_proj:
+            print("Error: No active project found.")
+            return
+        curr_tl = curr_proj.GetCurrentTimeline()
+        if not curr_tl:
+            print("Error: No active timeline found.")
+            return
+            
+        track_count = int(curr_tl.GetTrackCount("video") or 0)
+        if not track_count or track_count < 1:
+            print("No video tracks found on active timeline.")
+            return
+
+        # Scan timeline to determine if any Flow Notes (Pink markers) currently exist
+        any_notes_found = False
+        for t_idx in range(1, track_count + 1):
+            items_list = curr_tl.GetItemListInTrack("video", t_idx) or []
+            for itm in items_list:
+                try:
+                    markers = itm.GetMarkers() or {}
+                    for fid, m_data in markers.items():
+                        m_color = m_data.get("color", "") if isinstance(m_data, dict) else ""
+                        m_name = m_data.get("name", "") if isinstance(m_data, dict) else ""
+                        if m_color == "Pink" or "FLOW NOTES" in str(m_name).upper():
+                            any_notes_found = True
+                            break
+                    if any_notes_found:
+                        break
+                except Exception:
+                    pass
+            if any_notes_found:
+                break
+                
+        if any_notes_found:
+            print("Toggling Flow Notes: Clearing Pink review note markers from active timeline...")
+            cleared_count = 0
+            for t_idx in range(1, track_count + 1):
+                items_list = curr_tl.GetItemListInTrack("video", t_idx) or []
+                for itm in items_list:
+                    try:
+                        markers = itm.GetMarkers() or {}
+                        for fid, m_data in list(markers.items()):
+                            m_color = m_data.get("color", "") if isinstance(m_data, dict) else ""
+                            m_name = m_data.get("name", "") if isinstance(m_data, dict) else ""
+                            if m_color == "Pink" or "FLOW NOTES" in str(m_name).upper():
+                                try:
+                                    itm.DeleteMarker(int(fid))
+                                    cleared_count += 1
+                                except Exception:
+                                    try:
+                                        itm.DeleteMarker(fid)
+                                        cleared_count += 1
+                                    except Exception:
+                                        pass
+                        try:
+                            if hasattr(itm, "DeleteMarkersByColor"):
+                                itm.DeleteMarkersByColor("Pink")
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
+            print(f"-> Successfully removed review note markers from {cleared_count} clips.")
+        else:
+            print("Toggling Flow Notes: Attaching Pink full-duration review comment markers...")
+            added_count = 0
+            for t_idx in range(1, track_count + 1):
+                items_list = curr_tl.GetItemListInTrack("video", t_idx) or []
+                for itm in items_list:
+                    try:
+                        comments_text = None
+                        try:
+                            comments_text = str(itm.GetClipProperty("Comments") or "").strip()
+                        except Exception:
+                            pass
+                        if not comments_text or comments_text == "None":
+                            try:
+                                mp_item = itm.GetMediaPoolItem()
+                                if mp_item:
+                                    comments_text = str(mp_item.GetClipProperty("Comments") or "").strip()
+                            except Exception:
+                                pass
+                        if not comments_text or comments_text == "None":
+                            continue
+
+                        marker_dur = 1
+                        try:
+                            if hasattr(itm, "GetDuration"):
+                                marker_dur = int(itm.GetDuration())
+                            else:
+                                marker_dur = int(itm.GetEnd() - itm.GetStart())
+                        except Exception:
+                            try:
+                                marker_dur = int(itm.GetEnd() - itm.GetStart())
+                            except Exception:
+                                marker_dur = 48
+                        if marker_dur < 1:
+                            marker_dur = 1
+
+                        start_f = 0
+                        try:
+                            start_f = int(itm.GetLeftOffset())
+                        except Exception:
+                            try:
+                                start_f = int(itm.GetStart())
+                            except Exception:
+                                pass
+                                
+                        marker_added = False
+                        for candidate_f in [start_f, 0, int(itm.GetStart() if hasattr(itm, 'GetStart') else 0)]:
+                            try:
+                                itm.AddMarker(candidate_f, "Pink", "FLOW NOTES", comments_text, marker_dur)
+                                marker_added = True
+                                break
+                            except Exception:
+                                continue
+                        if marker_added:
+                            added_count += 1
+                    except Exception:
+                        pass
+            print(f"-> Successfully applied Flow review note markers to {added_count} clips.")
+    except Exception as e:
+        print(f"Error toggling Flow Notes: {e}")
+
 def OnProjectChange(ev):
     proj_name = items["ProjectCombo"].CurrentText
     proj_str = proj_name.lower() if proj_name else "default"
@@ -2043,6 +2249,7 @@ def OnProjectChange(ev):
 win.On.ProjectCombo.CurrentIndexChanged = OnProjectChange
 win.On.CleanCacheBtn.Clicked = OnCleanCache
 win.On.ToggleMarkersBtn.Clicked = OnToggleMarkers
+win.On.ToggleNotesBtn.Clicked = OnToggleFlowNotes
 win.On.BuildBtn.Clicked = OnBuild
 win.On.CancelBtn.Clicked = OnCancel
 win.On.FlowDialog.Close = OnCancel
