@@ -44,14 +44,14 @@ def main():
         {
             "name": "Linear ACEScg to SPI_anim",
             "src": "ACEScg",
-            "target_space": legacy_config.getDisplayViewColorSpaceName(display_name, view_name),
+            "target_space": legacy_config.getDisplayViewColorSpaceName("Rec.709-Screen", "SPI_anim"),
             "filename": "tmnt2_native_look_v2.ctf",
             "description": "TMNT2 Show Look (ACEScg Linear to SPI_anim Rec.709) - Mathematically Exact OCIO v2 CTF"
         },
         {
             "name": "Log ACEScct to SPI_anim",
             "src": "ACEScct",
-            "target_space": legacy_config.getDisplayViewColorSpaceName(display_name, view_name),
+            "target_space": legacy_config.getDisplayViewColorSpaceName("Rec.709-Screen", "SPI_anim"),
             "filename": "tmnt2_acescct_to_rec709_v2.ctf",
             "description": "TMNT2 Show Look (ACEScct Log to SPI_anim Rec.709) - Mathematically Exact OCIO v2 CTF"
         },
@@ -61,6 +61,34 @@ def main():
             "target_space": "Output - Rec.709",
             "filename": "aces_rec709_v2.ctf",
             "description": "Standard ACES Rec.709 Output"
+        },
+        {
+            "name": "Linear ACEScg to SPI_anim_P3D65",
+            "src": "ACEScg",
+            "target_space": legacy_config.getDisplayViewColorSpaceName("P3D65-Screen/Cinema", "SPI_anim"),
+            "filename": "tmnt2_p3d65_look_v2.ctf",
+            "description": "TMNT2 Show Look (ACEScg to P3D65)"
+        },
+        {
+            "name": "Linear ACEScg to Standard P3D65",
+            "src": "ACEScg",
+            "target_space": "Output - P3D65",
+            "filename": "aces_p3d65_v2.ctf",
+            "description": "Standard ACES P3D65 Output"
+        },
+        {
+            "name": "sRGB Texture to ACEScg",
+            "src": "srgb8",
+            "target_space": "acescg",
+            "filename": "texture_srgb_to_acescg.ctf",
+            "description": "Legacy TMNT2 sRGB texture mapping to ACEScg"
+        },
+        {
+            "name": "Linear Texture to ACEScg",
+            "src": "linear",
+            "target_space": "acescg",
+            "filename": "texture_linear_to_acescg.ctf",
+            "description": "Legacy TMNT2 Linear texture mapping to ACEScg"
         }
     ]
 
@@ -111,6 +139,10 @@ displays:
     - !<View> {{name: SPI_anim (TMNT2 Look), colorspace: ACEScg, looks: TMNT2_Look}}
     - !<View> {{name: Standard ACES Rec.709, colorspace: ACEScg, looks: ACES_Rec709_Look}}
 
+  P3D65-Screen:
+    - !<View> {{name: SPI_anim (TMNT2 Look), colorspace: ACEScg, looks: TMNT2_P3_Look}}
+    - !<View> {{name: Standard ACES P3-D65, colorspace: ACEScg, looks: ACES_P3_Look}}
+
 colorspaces:
   - !<ColorSpace>
     name: ACEScg
@@ -131,6 +163,24 @@ colorspaces:
     encoding: log
 
   - !<ColorSpace>
+    name: sRGB - Texture
+    family: Utility
+    equalitygroup: ""
+    bitdepth: 32f
+    description: Standard 8-bit sRGB color texture space
+    isdata: false
+    to_reference: !<FileTransform> {{src: texture_srgb_to_acescg.ctf, interpolation: linear}}
+
+  - !<ColorSpace>
+    name: Linear - Texture
+    family: Utility
+    equalitygroup: ""
+    bitdepth: 32f
+    description: Linear sRGB color texture space
+    isdata: false
+    to_reference: !<FileTransform> {{src: texture_linear_to_acescg.ctf, interpolation: linear}}
+
+  - !<ColorSpace>
     name: Raw
     family: Utility
     equalitygroup: ""
@@ -148,6 +198,16 @@ looks:
     name: ACES_Rec709_Look
     process_space: ACEScg
     transform: !<FileTransform> {{src: aces_rec709_v2.ctf, interpolation: linear}}
+
+  - !<Look>
+    name: TMNT2_P3_Look
+    process_space: ACEScg
+    transform: !<FileTransform> {{src: tmnt2_p3d65_look_v2.ctf, interpolation: linear}}
+
+  - !<Look>
+    name: ACES_P3_Look
+    process_space: ACEScg
+    transform: !<FileTransform> {{src: aces_p3d65_v2.ctf, interpolation: linear}}
 """
     with open(v2_config_path, "w") as f:
         f.write(v2_yaml)
