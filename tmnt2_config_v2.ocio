@@ -14,7 +14,8 @@ roles:
 
 displays:
   Rec.709-Screen:
-    - !<View> {name: SPI_anim, colorspace: ACEScg, looks: TMNT2_Look}
+    - !<View> {name: SPI_anim (TMNT2 Look), colorspace: ACEScg, looks: TMNT2_Look}
+    - !<View> {name: Standard ACES Rec.709, colorspace: ACEScg, looks: ACES_Rec709_Look}
 
 colorspaces:
   - !<ColorSpace>
@@ -48,3 +49,8 @@ looks:
     name: TMNT2_Look
     process_space: ACEScg
     transform: !<FileTransform> {src: tmnt2_native_look_v2.ctf, interpolation: linear}
+
+  - !<Look>
+    name: ACES_Rec709_Look
+    process_space: ACEScg
+    transform: !<FileTransform> {src: aces_rec709_v2.ctf, interpolation: linear}

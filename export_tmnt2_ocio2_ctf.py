@@ -36,32 +36,42 @@ def main():
     print(f"[1] Loading Legacy OCIO Config: {legacy_config_path}...")
     legacy_config = ocio.Config.CreateFromFile(legacy_config_path)
 
+    display_name = "Rec.709-Screen"
+    view_name = "SPI_anim"
+
     # Define our targets and output filenames (Using CTF to natively preserve InverseLUT1D math)
     exports = [
         {
             "name": "Linear ACEScg to SPI_anim",
             "src": "ACEScg",
+            "target_space": legacy_config.getDisplayViewColorSpaceName(display_name, view_name),
             "filename": "tmnt2_native_look_v2.ctf",
             "description": "TMNT2 Show Look (ACEScg Linear to SPI_anim Rec.709) - Mathematically Exact OCIO v2 CTF"
         },
         {
             "name": "Log ACEScct to SPI_anim",
             "src": "ACEScct",
+            "target_space": legacy_config.getDisplayViewColorSpaceName(display_name, view_name),
             "filename": "tmnt2_acescct_to_rec709_v2.ctf",
             "description": "TMNT2 Show Look (ACEScct Log to SPI_anim Rec.709) - Mathematically Exact OCIO v2 CTF"
+        },
+        {
+            "name": "Linear ACEScg to Standard Rec709",
+            "src": "ACEScg",
+            "target_space": "Output - Rec.709",
+            "filename": "aces_rec709_v2.ctf",
+            "description": "Standard ACES Rec.709 Output"
         }
     ]
-
-    display_name = "Rec.709-Screen"
-    view_name = "SPI_anim"
 
     print(f"\n[2] Extracting and Optimizing Transform Chains via OCIO v2...")
     for item in exports:
         src_space = item["src"]
+        target_space = item["target_space"]
         out_file = os.path.join(base_dir, item["filename"])
 
         # We request an optimized processor from OCIO 2.5.1
-        processor = legacy_config.getProcessor(src_space, legacy_config.getDisplayViewColorSpaceName(display_name, view_name))
+        processor = legacy_config.getProcessor(src_space, target_space)
         opt_processor = processor.getOptimizedProcessor(ocio.OPTIMIZATION_LOSSLESS)
         group = opt_processor.createGroupTransform()
 
@@ -98,7 +108,8 @@ roles:
 
 displays:
   Rec.709-Screen:
-    - !<View> {{name: SPI_anim, colorspace: ACEScg, looks: TMNT2_Look}}
+    - !<View> {{name: SPI_anim (TMNT2 Look), colorspace: ACEScg, looks: TMNT2_Look}}
+    - !<View> {{name: Standard ACES Rec.709, colorspace: ACEScg, looks: ACES_Rec709_Look}}
 
 colorspaces:
   - !<ColorSpace>
@@ -132,6 +143,11 @@ looks:
     name: TMNT2_Look
     process_space: ACEScg
     transform: !<FileTransform> {{src: tmnt2_native_look_v2.ctf, interpolation: linear}}
+
+  - !<Look>
+    name: ACES_Rec709_Look
+    process_space: ACEScg
+    transform: !<FileTransform> {{src: aces_rec709_v2.ctf, interpolation: linear}}
 """
     with open(v2_config_path, "w") as f:
         f.write(v2_yaml)
