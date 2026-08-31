@@ -138,6 +138,7 @@ displays:
   Rec.709-Screen:
     - !<View> {{name: SPI_anim (TMNT2 Look), colorspace: ACEScg, looks: TMNT2_Look}}
     - !<View> {{name: Standard ACES Rec.709, colorspace: ACEScg, looks: ACES_Rec709_Look}}
+    - !<View> {{name: AgX (Filmic), colorspace: ACEScg, looks: AgX_Look}}
 
   P3D65-Screen:
     - !<View> {{name: SPI_anim (TMNT2 Look), colorspace: ACEScg, looks: TMNT2_P3_Look}}
@@ -188,6 +189,27 @@ colorspaces:
     description: Raw data
     isdata: true
 
+  - !<ColorSpace>
+    name: Inverse TMNT2 MattePaint
+    family: Utility
+    equalitygroup: ""
+    bitdepth: 32f
+    description: Matte Painting input - Inverts the TMNT2 Look to preserve sRGB appearance under the TMNT2 Look
+    isdata: false
+    to_reference: !<FileTransform> {{src: tmnt2_native_look_v2.ctf, direction: inverse, interpolation: tetrahedral}}
+
+  - !<ColorSpace>
+    name: Inverse AgX MattePaint
+    family: Utility
+    equalitygroup: ""
+    bitdepth: 32f
+    description: Matte Painting input - Inverts the AgX Look to preserve sRGB appearance under the AgX Look
+    isdata: false
+    to_reference: !<GroupTransform>
+      children:
+        - !<FileTransform> {{src: agx_acescct_to_rec709.ctf, direction: inverse, interpolation: tetrahedral}}
+        - !<ColorSpaceTransform> {{src: ACEScct, dst: ACEScg}}
+
 looks:
   - !<Look>
     name: TMNT2_Look
@@ -208,6 +230,11 @@ looks:
     name: ACES_P3_Look
     process_space: ACEScg
     transform: !<FileTransform> {{src: aces_p3d65_v2.ctf, interpolation: linear}}
+
+  - !<Look>
+    name: AgX_Look
+    process_space: ACEScct
+    transform: !<FileTransform> {{src: agx_acescct_to_rec709.ctf, interpolation: tetrahedral}}
 """
     with open(v2_config_path, "w") as f:
         f.write(v2_yaml)
