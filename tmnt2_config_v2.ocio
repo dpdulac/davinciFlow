@@ -21,6 +21,7 @@ displays:
   P3D65-Screen:
     - !<View> {name: SPI_anim (TMNT2 Look), colorspace: ACEScg, looks: TMNT2_P3_Look}
     - !<View> {name: Standard ACES P3-D65, colorspace: ACEScg, looks: ACES_P3_Look}
+    - !<View> {name: AgX (Filmic), colorspace: ACEScg, looks: AgX_Look}
 
 colorspaces:
   - !<ColorSpace>
