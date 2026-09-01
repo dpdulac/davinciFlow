@@ -1,0 +1,38 @@
+# OCIO / Color Pipeline Documentation for AI Assistants
+# Author: David Dulac
+# Date: September 2026
+
+## Overview
+This document explains the custom OpenColorIO (OCIO) v2 pipeline configured in `davinciFlow/export_tmnt2_ocio2_ctf.py`. 
+The resulting configuration is exported to `/s/prodanim/studio/_sandbox/dulacd/davidOcio/` under the name `davidCustomConfig.ocio`.
+
+## What We Built
+We successfully extracted the stylized TMNT2 look from a legacy production config and upgraded it to a native, high-precision OCIO v2 `.ctf` format. 
+We then added support for standard ACES viewing and a new AgX Filmic pipeline.
+
+### Color Spaces
+The working color space (scene-linear) is always **ACEScg**.
+We created the following input texture color spaces:
+- **sRGB - Texture**: Converts standard sRGB image textures to ACEScg.
+- **Linear - Texture**: Assumes linear data, mapped directly to ACEScg.
+- **Raw**: For data passes (Normals, Roughness, Z-depth) bypassing color management.
+- **Inverse TMNT2 MattePaint**: Inverts the TMNT2 Look to preserve the exact sRGB pixel values of a Photoshop matte painting when viewed through the SPI_anim look.
+- **Inverse AgX MattePaint**: Inverts the AgX Look to preserve the exact sRGB pixel values of a Photoshop matte painting when viewed through the AgX look.
+
+### Displays & Views
+We support two primary display targets:
+1. **Rec.709-Screen** (Standard computer monitors)
+   - *SPI_anim (TMNT2 Look)*: The exact legacy TMNT2 show look targeted for Rec.709.
+   - *Standard ACES Rec.709*: The neutral, un-stylized ACES 1.x Rec.709 ODT.
+   - *AgX (Filmic)*: The standard Blender 4.0+ AgX filmic tone-mapping curve, built natively for Rec.709 displays.
+
+2. **P3D65-Screen** (Wide-gamut displays / projectors)
+   - *SPI_anim (TMNT2 Look)*: The legacy TMNT2 show look specifically calibrated for P3-D65.
+   - *Standard ACES P3-D65*: The neutral, un-stylized ACES 1.x P3-D65 ODT.
+   - *AgX (Filmic)*: The AgX tone-mapping curve (stretches Rec.709 AgX data across P3 gamut for punchier looks).
+
+## Technical Details for AI Continuations
+- The Python generator script is `export_tmnt2_ocio2_ctf.py`.
+- It dynamically generates `.ctf` files from the legacy `config.ocio` and writes a new `davidCustomConfig.ocio` file from scratch.
+- The script relies on OCIO version 2.5.1 and must be executed in the `rez env ocio-2.5.1 pyocio-2.5.1` environment.
+- The `.ctf` files and `davidCustomConfig.ocio` are deployed to `/s/prodanim/studio/_sandbox/dulacd/davidOcio/`.

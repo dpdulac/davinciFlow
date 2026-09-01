@@ -116,7 +116,7 @@ def main():
         print(f"     Successfully saved CTF: {out_file}\n")
 
     print("[3] Generating Standalone OCIO v2 Profile Configuration...")
-    v2_config_filename = "tmnt2_config_v2.ocio"
+    v2_config_filename = "davidCustomConfig.ocio"
     v2_config_path = os.path.join(base_dir, v2_config_filename)
 
     # Constructing a clean, ultra-fast OCIO v2 profile referencing our native CTF shader
@@ -252,9 +252,14 @@ looks:
 
     # Copying to requested locations
     print("\n[5] Deploying copies to user directories...")
+    david_ocio_dir = "/s/prodanim/studio/_sandbox/dulacd/davidOcio"
+    if not os.path.exists(david_ocio_dir):
+        os.makedirs(david_ocio_dir)
+
     destinations = [
         "/datas/dulacd",
         "/s/prodanim/studio/_sandbox/dulacd",
+        david_ocio_dir,
         "/datas/dulacd/DaVinciResolve/LUT/davinciFlow"
     ]
 
